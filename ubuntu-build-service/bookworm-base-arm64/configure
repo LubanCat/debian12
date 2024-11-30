@@ -24,7 +24,7 @@ lb config \
  --backports false \
  --binary-filesystem ext4 \
  --binary-images tar \
- --bootappend-live "hostname=linaro-alip username=linaro" \
+ --bootappend-live "hostname=lubancat username=cat" \
  --bootloader "syslinux" \
  --bootstrap-qemu-arch arm64 \
  --bootstrap-qemu-static /usr/bin/qemu-aarch64-static \
@@ -32,7 +32,9 @@ lb config \
  --chroot-filesystem none \
  --compression gzip \
  --debootstrap-options "--variant=minbase --include=apt-transport-https,gnupg" \
- --distribution bookwrom \
+ --distribution bookworm \
+ --firmware-binary false \
+ --firmware-chroot false \
  --gzip-options '-9 --rsyncable' \
  --iso-publisher 'Linaro; http://www.linaro.org/; linaro-dev@lists.linaro.org' \
  --iso-volume 'Linaro Bookworm $(date +%Y%m%d-%H:%M)' \
