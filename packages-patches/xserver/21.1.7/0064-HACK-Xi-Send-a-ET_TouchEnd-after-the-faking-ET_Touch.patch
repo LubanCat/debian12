@@ -1,0 +1,44 @@
+From ab25b1c06bc86139144006e5856ab1bc74a49e54 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 30 Jun 2022 18:19:52 +0800
+Subject: [PATCH 64/81] HACK: Xi: Send a ET_TouchEnd after the faking
+ ET_TouchUpdate
+
+Fix nm-applet issues.
+
+NOTE: This might bring other issues.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ Xi/exevents.c | 8 ++++++++
+ 1 file changed, 8 insertions(+)
+
+diff --git a/Xi/exevents.c b/Xi/exevents.c
+index dcd4efb3b..640dc75b6 100644
+--- a/Xi/exevents.c
++++ b/Xi/exevents.c
+@@ -1096,6 +1096,11 @@ DeliverOneTouchEvent(ClientPtr client, DeviceIntPtr dev, TouchPointInfoPtr ti,
+     err = TryClientEvents(client, dev, xi2, 1, filter, filter, NullGrab);
+     free(xi2);
+ 
++    if (ev->any.type == ET_TouchUpdate && ti->pending_finish) {
++        ev->any.type = ET_TouchEnd;
++        DeliverOneTouchEvent(client, dev, ti, grab, win, ev);
++    }
++
+     /* Returning the value from TryClientEvents isn't useful, since all our
+      * resource-gone cleanups will update the delivery list anyway. */
+     return TRUE;
+@@ -2126,6 +2131,9 @@ DeliverTouchEndEvent(DeviceIntPtr dev, TouchPointInfoPtr ti, InternalEvent *ev,
+             ev->any.type = ET_TouchUpdate;
+             ev->device_event.flags |= TOUCH_PENDING_END;
+             ti->pending_finish = TRUE;
++
++            if (normal_end && listener->state != TOUCH_LISTENER_HAS_END)
++                rc = DeliverOneTouchEvent(client, dev, ti, grab, win, ev);
+         }
+ 
+         if (normal_end)
+-- 
+2.38.5
+

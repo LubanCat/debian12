@@ -1,0 +1,30 @@
+From 8299ef5d368b73879d68973ac5d1f746f3336fde Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 12 Oct 2021 17:27:16 +0800
+Subject: [PATCH 47/81] modesetting: Drop set_master
+
+Not needed since Rockchip BSP kernels doesn't have DRM permit checking.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index d395db767..7ef9fc0d4 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1860,8 +1860,10 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
+ 
+     pScrn->pScreen = pScreen;
+ 
++#if 0 // The Rockchip BSP kernels doesn't have DRM permit checking.
+     if (!SetMaster(pScrn))
+         return FALSE;
++#endif
+ 
+ #ifdef GLAMOR_HAS_GBM
+     if (ms->drmmode.glamor)
+-- 
+2.38.5
+

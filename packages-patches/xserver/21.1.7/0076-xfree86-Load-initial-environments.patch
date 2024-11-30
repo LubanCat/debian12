@@ -1,0 +1,30 @@
+From 42cff9f112f1fab98f0fab26647b90808bf41c38 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 10 Oct 2023 10:33:18 +0800
+Subject: [PATCH 76/81] xfree86: Load initial environments
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/Xorg.sh.in | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/hw/xfree86/Xorg.sh.in b/hw/xfree86/Xorg.sh.in
+index 481413523..4b052ad31 100644
+--- a/hw/xfree86/Xorg.sh.in
++++ b/hw/xfree86/Xorg.sh.in
+@@ -3,6 +3,12 @@
+ # Execute Xorg.wrap if it exists otherwise execute Xorg directly.
+ # This allows distros to put the suid wrapper in a separate package.
+ 
++# Load environments
++. /etc/profile
++if [ -r ~/.xinitrc ]; then
++	. ~/.xinitrc
++fi
++
+ basedir=@SUID_WRAPPER_DIR@
+ if [ -x "$basedir"/Xorg.wrap ]; then
+ 	exec "$basedir"/Xorg.wrap "$@"
+-- 
+2.38.5
+

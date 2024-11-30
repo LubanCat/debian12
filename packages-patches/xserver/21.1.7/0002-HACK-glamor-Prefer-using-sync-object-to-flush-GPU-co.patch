@@ -1,0 +1,124 @@
+From 1dc4c0871bc8c0fe0aff91978e5c37b32386331b Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Mon, 3 Jun 2019 19:16:53 +0800
+Subject: [PATCH 02/81] HACK: glamor: Prefer using sync object to flush GPU
+ commands for GLES
+
+Somehow the glFlush() not working on mali GPU.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ configure.ac                            |  4 ++++
+ glamor/glamor.c                         | 19 ++++++++++++++++---
+ glamor/glamor_sync.c                    |  4 +---
+ hw/xfree86/drivers/modesetting/driver.c |  9 +++++++++
+ include/dix-config.h.in                 |  3 +++
+ 5 files changed, 33 insertions(+), 6 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 0c899ea94..608d354e3 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2047,6 +2047,10 @@ if test "x$GLAMOR" = xyes; then
+ 			AC_MSG_ERROR([Glamor for Xorg requires $LIBGBM])
+ 		fi
+ 	fi
++
++	AC_CHECK_HEADER([GLES3/gl3.h],
++		[AC_CHECK_LIB(GLESv2, glFenceSync,
++			[AC_DEFINE(GLAMOR_HAS_GL_FENCE,1,[Have glFenceSync])])])
+ fi
+ AM_CONDITIONAL([GLAMOR_EGL], [test "x$GBM" = xyes])
+ 
+diff --git a/glamor/glamor.c b/glamor/glamor.c
+index da2ea94ba..d50aab0c4 100644
+--- a/glamor/glamor.c
++++ b/glamor/glamor.c
+@@ -273,7 +273,21 @@ glamor_block_handler(ScreenPtr screen)
+     glamor_screen_private *glamor_priv = glamor_get_screen_private(screen);
+ 
+     glamor_make_current(glamor_priv);
+-    glFlush();
++
++    if (glamor_priv->is_gles) {
++#ifdef GLAMOR_HAS_GL_FENCE
++        GLsync sync;
++
++        sync = glFenceSync(GL_SYNC_GPU_COMMANDS_COMPLETE, 0);
++        glFlush();
++        glWaitSync(sync, 0, GL_TIMEOUT_IGNORED);
++        glDeleteSync(sync);
++#else
++        glamor_finish(screen);
++#endif
++    } else {
++        glFlush();
++    }
+ }
+ 
+ static void
+@@ -281,8 +295,7 @@ _glamor_block_handler(ScreenPtr screen, void *timeout)
+ {
+     glamor_screen_private *glamor_priv = glamor_get_screen_private(screen);
+ 
+-    glamor_make_current(glamor_priv);
+-    glFlush();
++    glamor_block_handler(screen);
+ 
+     screen->BlockHandler = glamor_priv->saved_procs.block_handler;
+     screen->BlockHandler(screen, timeout);
+diff --git a/glamor/glamor_sync.c b/glamor/glamor_sync.c
+index 907e0c613..9d88fd4b8 100644
+--- a/glamor/glamor_sync.c
++++ b/glamor/glamor_sync.c
+@@ -48,12 +48,10 @@ static void
+ glamor_sync_fence_set_triggered (SyncFence *fence)
+ {
+ 	ScreenPtr screen = fence->pScreen;
+-	glamor_screen_private *glamor = glamor_get_screen_private(screen);
+ 	struct glamor_sync_fence *glamor_fence = glamor_get_sync_fence(fence);
+ 
+ 	/* Flush pending rendering operations */
+-        glamor_make_current(glamor);
+-        glFlush();
++	glamor_block_handler(screen);
+ 
+ 	fence->funcs.SetTriggered = glamor_fence->set_triggered;
+ 	fence->funcs.SetTriggered(fence);
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 535f49d1d..cfe9fcd05 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -524,6 +524,15 @@ dispatch_dirty_region(ScrnInfoPtr scrn,
+     unsigned num_cliprects = REGION_NUM_RECTS(dirty);
+     int ret = 0;
+ 
++#ifdef GLAMOR_HAS_GBM
++    /*
++     * HACK: Move glamor_block_handler's glamor_finish here to avoid
++     * blocking no-dirty path.
++     */
++    if (ms->drmmode.glamor)
++        glamor_finish(pixmap->drawable.pScreen);
++#endif
++
+     if (num_cliprects) {
+         drmModeClip *clip = xallocarray(num_cliprects, sizeof(drmModeClip));
+         BoxPtr rect = REGION_RECTS(dirty);
+diff --git a/include/dix-config.h.in b/include/dix-config.h.in
+index 382d70609..e0c508ca6 100644
+--- a/include/dix-config.h.in
++++ b/include/dix-config.h.in
+@@ -470,6 +470,9 @@
+ /* Build glamor/gbm has linear support */
+ #undef GLAMOR_HAS_GBM_LINEAR
+ 
++/* Build glamor/gbm has gl fence support */
++#undef GLAMOR_HAS_GL_FENCE
++
+ /* GBM has modifiers support */
+ #undef GBM_BO_WITH_MODIFIERS
+ 
+-- 
+2.38.5
+

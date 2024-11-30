@@ -1,0 +1,100 @@
+From 5f1f1f35b6da8496e9e99839d74908c563f4d537 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:45:57 +0800
+Subject: [PATCH 45/81] exa: Fix crash after CloseScreen()
+
+After moving CloseScreen() before dixFreeScreenSpecificPrivates(),
+we need to make sure private keys available after CloseScreen().
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ exa/exa.c                  | 16 ++++++----------
+ exa/exa_priv.h             |  2 +-
+ hw/xfree86/exa/examodule.c |  4 +++-
+ 3 files changed, 10 insertions(+), 12 deletions(-)
+
+diff --git a/exa/exa.c b/exa/exa.c
+index b16875845..06412ed05 100644
+--- a/exa/exa.c
++++ b/exa/exa.c
+@@ -774,8 +774,6 @@ exaCloseScreen(ScreenPtr pScreen)
+     unwrap(pExaScr, ps, Triangles);
+     unwrap(pExaScr, ps, AddTraps);
+ 
+-    free(pExaScr);
+-
+     return (*pScreen->CloseScreen) (pScreen);
+ }
+ 
+@@ -877,27 +875,25 @@ exaDriverInit(ScreenPtr pScreen, ExaDriverPtr pScreenInfo)
+ 
+     ps = GetPictureScreenIfSet(pScreen);
+ 
+-    if (!dixRegisterPrivateKey(&exaScreenPrivateKeyRec, PRIVATE_SCREEN, 0)) {
+-        LogMessage(X_WARNING, "EXA(%d): Failed to register screen private\n",
++    if (!dixRegisterPrivateKey(&exaScreenPrivateKeyRec, PRIVATE_SCREEN, sizeof(ExaScreenPrivRec))) {
++        LogMessage(X_WARNING, "EXA(%d): Failed to allocate screen private\n",
+                    pScreen->myNum);
+         return FALSE;
+     }
+ 
+-    pExaScr = calloc(sizeof(ExaScreenPrivRec), 1);
++    pExaScr = ExaGetScreenPriv(pScreen);
+     if (!pExaScr) {
+-        LogMessage(X_WARNING, "EXA(%d): Failed to allocate screen private\n",
+-                   pScreen->myNum);
+         return FALSE;
+     }
+ 
+     pExaScr->info = pScreenInfo;
+-
+-    dixSetPrivate(&pScreen->devPrivates, exaScreenPrivateKey, pExaScr);
+-
+     pExaScr->migration = ExaMigrationAlways;
+ 
+     exaDDXDriverInit(pScreen);
+ 
++    /* private re-allocated */
++    pExaScr = ExaGetScreenPriv(pScreen);
++
+     if (!dixRegisterScreenSpecificPrivateKey
+         (pScreen, &pExaScr->gcPrivateKeyRec, PRIVATE_GC, sizeof(ExaGCPrivRec))) {
+         LogMessage(X_WARNING, "EXA(%d): Failed to allocate GC private\n",
+diff --git a/exa/exa_priv.h b/exa/exa_priv.h
+index 4468487e6..7cb93d085 100644
+--- a/exa/exa_priv.h
++++ b/exa/exa_priv.h
+@@ -218,7 +218,7 @@ extern DevPrivateKeyRec exaScreenPrivateKeyRec;
+ 
+ #define exaScreenPrivateKey (&exaScreenPrivateKeyRec)
+ 
+-#define ExaGetScreenPriv(s) ((ExaScreenPrivPtr)dixGetPrivate(&(s)->devPrivates, exaScreenPrivateKey))
++#define ExaGetScreenPriv(s) ((ExaScreenPrivPtr)dixGetPrivateAddr(&(s)->devPrivates, exaScreenPrivateKey))
+ #define ExaScreenPriv(s)	ExaScreenPrivPtr    pExaScr = ExaGetScreenPriv(s)
+ 
+ #define ExaGetGCPriv(gc) ((ExaGCPrivPtr)dixGetPrivateAddr(&(gc)->devPrivates, &ExaGetScreenPriv(gc->pScreen)->gcPrivateKeyRec))
+diff --git a/hw/xfree86/exa/examodule.c b/hw/xfree86/exa/examodule.c
+index 0bbd93e34..ad4b57ff2 100644
+--- a/hw/xfree86/exa/examodule.c
++++ b/hw/xfree86/exa/examodule.c
+@@ -110,7 +110,6 @@ exaXorgEnableDisableFBAccess(ScrnInfoPtr pScrn, Bool enable)
+ void
+ exaDDXDriverInit(ScreenPtr pScreen)
+ {
+-    ExaScreenPriv(pScreen);
+     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+     ExaXorgScreenPrivPtr pScreenPriv;
+ 
+@@ -125,6 +124,9 @@ exaDDXDriverInit(ScreenPtr pScreen)
+     memcpy(pScreenPriv->options, EXAOptions, sizeof(EXAOptions));
+     xf86ProcessOptions(pScrn->scrnIndex, pScrn->options, pScreenPriv->options);
+ 
++    /* private re-allocated */
++    ExaScreenPriv(pScreen);
++
+     if (pExaScr->info->flags & EXA_OFFSCREEN_PIXMAPS) {
+         if (!(pExaScr->info->flags & EXA_HANDLES_PIXMAPS) &&
+             pExaScr->info->offScreenBase < pExaScr->info->memorySize) {
+-- 
+2.38.5
+

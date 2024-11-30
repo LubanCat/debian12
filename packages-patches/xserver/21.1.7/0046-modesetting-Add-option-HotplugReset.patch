@@ -1,0 +1,173 @@
+From c1103e230928aeac41c19e19865a1d99d182f03d Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Wed, 9 Jun 2021 11:02:13 +0800
+Subject: [PATCH 46/81] modesetting: Add option HotplugReset
+
+Support resetting re-connected outputs (do a modeset).
+
+This option is enabled by default.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c       |  4 ++
+ hw/xfree86/drivers/modesetting/driver.h       |  1 +
+ .../drivers/modesetting/drmmode_display.c     | 57 +++++++++++++++++--
+ .../drivers/modesetting/drmmode_display.h     |  4 ++
+ 4 files changed, 61 insertions(+), 5 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 09bcdca10..d395db767 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -162,6 +162,7 @@ static const OptionInfoRec Options[] = {
+     {OPTION_FLIP_FB_RATE, "MaxFlipRate", OPTV_INTEGER, {0}, 0},
+     {OPTION_BIND_CURRENT, "BindCurrent", OPTV_BOOLEAN, {0}, FALSE},
+     {OPTION_NO_EDID, "NoEDID", OPTV_BOOLEAN, {0}, FALSE},
++    {OPTION_HOTPLUG_RESET, "HotplugReset", OPTV_BOOLEAN, {0}, FALSE},
+     {-1, NULL, OPTV_NONE, {0}, FALSE}
+ };
+ 
+@@ -1275,6 +1276,9 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+     ms->drmmode.pageflip =
+         xf86ReturnOptValBool(ms->drmmode.Options, OPTION_PAGEFLIP, TRUE);
+ 
++    ms->drmmode.hotplug_reset =
++        xf86ReturnOptValBool(ms->drmmode.Options, OPTION_HOTPLUG_RESET, TRUE);
++
+     str_value = xf86GetOptValString(ms->drmmode.Options, OPTION_FLIP_FB);
+     if (!str_value || !strcmp(str_value, "transformed"))
+         ms->drmmode.fb_flip_mode = DRMMODE_FB_FLIP_TRANSFORMED;
+diff --git a/hw/xfree86/drivers/modesetting/driver.h b/hw/xfree86/drivers/modesetting/driver.h
+index 7a8041644..4816031ee 100644
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -66,6 +66,7 @@ typedef enum {
+     OPTION_FLIP_FB_RATE,
+     OPTION_BIND_CURRENT,
+     OPTION_NO_EDID,
++    OPTION_HOTPLUG_RESET,
+ } modesettingOpts;
+ 
+ typedef struct
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 5bc4d76b7..c2810d4f6 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -1653,6 +1653,10 @@ drmmode_set_mode_major(xf86CrtcPtr crtc, DisplayModePtr mode,
+     Bool can_test;
+     int i;
+ 
++    /* Ignore modeset when disconnected in hotplug reset mode */
++    if (drmmode->hotplug_reset && !drmmode_crtc_connected(crtc))
++        return ret;
++
+     saved_mode = crtc->mode;
+     saved_x = crtc->x;
+     saved_y = crtc->y;
+@@ -2615,6 +2619,45 @@ drmmode_output_update_properties(xf86OutputPtr output)
+ 
+ }
+ 
++static void
++drmmode_output_change_status(xf86OutputPtr output, xf86OutputStatus status)
++{
++    drmmode_output_private_ptr drmmode_output = output->driver_private;
++    drmmode_ptr drmmode = drmmode_output->drmmode;
++    drmmode_crtc_private_ptr drmmode_crtc;
++    ScrnInfoPtr scrn = drmmode->scrn;
++    xf86CrtcPtr crtc = output->crtc;
++    Bool connected;
++
++    if (drmmode_output->status == status)
++        return;
++
++    drmmode_output->status = status;
++    connected = status == XF86OutputStatusConnected;
++
++    xf86DrvMsg(scrn->scrnIndex, X_INFO,
++               "Output %s status changed to %s.\n", output->name,
++               connected ? "connected" : "disconnected");
++
++    if (!crtc)
++        return;
++
++    drmmode_crtc = crtc->driver_private;
++
++    if (!connected) {
++        if (drmmode->hotplug_reset && !drmmode_crtc_connected(crtc)) {
++            drmmode_crtc->need_modeset = TRUE;
++
++            drmModeSetCrtc(drmmode->fd,
++                           drmmode_crtc->mode_crtc->crtc_id,
++                           0, 0, 0, NULL, 0, NULL);
++        }
++    } else if (drmmode_crtc->need_modeset) {
++        drmmode_set_mode_major(crtc, &crtc->mode, crtc->rotation,
++                               crtc->x, crtc->y);
++    }
++}
++
+ static xf86OutputStatus
+ drmmode_output_detect(xf86OutputPtr output)
+ {
+@@ -2650,6 +2693,8 @@ drmmode_output_detect(xf86OutputPtr output)
+         status = XF86OutputStatusUnknown;
+         break;
+     }
++
++    drmmode_output_change_status(output, status);
+     return status;
+ }
+ 
+@@ -4129,8 +4174,14 @@ drmmode_update_kms_state(drmmode_ptr drmmode)
+     for (i = 0; i < config->num_output; i++) {
+         xf86OutputPtr output = config->output[i];
+         drmmode_output_private_ptr drmmode_output = output->driver_private;
++        xf86CrtcPtr crtc = output->crtc;
+ 
+-        drmmode_output_detect(output);
++        if (!crtc)
++            continue;
++
++        /* Update output status */
++        if (drmmode_output_detect(output) == XF86OutputStatusDisconnected)
++            continue;
+ 
+         /* Get an updated view of the properties for the current connector and
+          * look for the link-status property
+@@ -4140,10 +4191,6 @@ drmmode_update_kms_state(drmmode_ptr drmmode)
+ 
+             if (!strcmp(p->mode_prop->name, "link-status")) {
+                 if (p->value == DRM_MODE_LINK_STATUS_BAD) {
+-                    xf86CrtcPtr crtc = output->crtc;
+-                    if (!crtc)
+-                        continue;
+-
+                     /* the connector got a link failure, re-set the current mode */
+                     drmmode_set_mode_major(crtc, &crtc->mode, crtc->rotation,
+                                            crtc->x, crtc->y);
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.h b/hw/xfree86/drivers/modesetting/drmmode_display.h
+index 2b77658d6..72463cc53 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.h
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.h
+@@ -130,6 +130,8 @@ typedef struct {
+     void *shadow_fb;
+     void *shadow_fb2;
+ 
++    Bool hotplug_reset;
++
+     enum drmmode_fb_flip_mode fb_flip_mode;
+     int fb_flip_rate;
+ 
+@@ -281,6 +283,8 @@ typedef struct {
+     xf86CrtcPtr current_crtc;
+     Atom ctm_atom;
+     struct drm_color_ctm ctm;
++
++    xf86OutputStatus status;
+ } drmmode_output_private_rec, *drmmode_output_private_ptr;
+ 
+ typedef struct {
+-- 
+2.38.5
+

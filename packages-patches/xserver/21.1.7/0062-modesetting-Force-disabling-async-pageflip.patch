@@ -1,0 +1,29 @@
+From b42ac142591c4995367406771977bfa19d775629 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 5 Jul 2022 16:18:27 +0800
+Subject: [PATCH 62/81] modesetting: Force disabling async pageflip
+
+The BSP kernel might wrongly enable it.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index cb17ee142..4d8e4da2c 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1336,6 +1336,9 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+     if (ret == 0 && value == 1)
+         ms->drmmode.can_async_flip = TRUE;
+ 
++    /* HACK: The Rockchip BSP kernel might wrongly enable it */
++    ms->drmmode.can_async_flip = FALSE;
++
+     ms->kms_has_modifiers = FALSE;
+     ret = drmGetCap(ms->fd, DRM_CAP_ADDFB2_MODIFIERS, &value);
+     if (ret == 0 && value != 0)
+-- 
+2.38.5
+

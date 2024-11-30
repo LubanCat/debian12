@@ -1,0 +1,106 @@
+From 033e002d521e75cb58b70f18d137efe5ac558ca6 Mon Sep 17 00:00:00 2001
+From: Jiajian Wu <jair.wu@rock-chips.com>
+Date: Wed, 10 Apr 2024 16:06:18 +0800
+Subject: [PATCH] HACK: module-default-nodes: Add property use-original-prio
+
+Signed-off-by: Jiajian Wu <jair.wu@rock-chips.com>
+---
+ modules/module-default-nodes.c | 19 +++++++++++++++++++
+ 1 file changed, 19 insertions(+)
+
+diff --git a/modules/module-default-nodes.c b/modules/module-default-nodes.c
+index 822b75c..15901e5 100644
+--- a/modules/module-default-nodes.c
++++ b/modules/module-default-nodes.c
+@@ -19,6 +19,7 @@
+ #define DEFAULT_AUTO_ECHO_CANCEL TRUE
+ #define DEFAULT_ECHO_CANCEL_SINK_NAME "echo-cancel-sink"
+ #define DEFAULT_ECHO_CANCEL_SOURCE_NAME "echo-cancel-source"
++#define DEFAULT_USE_ORIGINAL_PRIO FALSE
+ #define N_PREV_CONFIGS 16
+ 
+ enum {
+@@ -28,6 +29,7 @@ enum {
+   PROP_AUTO_ECHO_CANCEL,
+   PROP_ECHO_CANCEL_SINK_NAME,
+   PROP_ECHO_CANCEL_SOURCE_NAME,
++  PROP_USE_ORIGINAL_PRIO,
+ };
+ 
+ typedef struct _WpDefaultNode WpDefaultNode;
+@@ -53,6 +55,7 @@ struct _WpDefaultNodes
+   gboolean use_persistent_storage;
+   gboolean auto_echo_cancel;
+   gchar *echo_cancel_names[2];
++  gboolean use_original_prio;
+ };
+ 
+ G_DECLARE_FINAL_TYPE (WpDefaultNodes, wp_default_nodes,
+@@ -284,6 +287,9 @@ find_best_media_class_node (WpDefaultNodes * self, const gchar *media_class,
+       if (!node_has_available_routes (self, node))
+         continue;
+ 
++      if (self->use_original_prio)
++        goto found;
++
+       if (self->auto_echo_cancel && is_echo_cancel_node (self, node, direction))
+         prio += 10000;
+ 
+@@ -302,6 +308,7 @@ find_best_media_class_node (WpDefaultNodes * self, const gchar *media_class,
+         }
+       }
+ 
++found:
+       if (prio > highest_prio || res == NULL) {
+         highest_prio = prio;
+         res = node;
+@@ -599,6 +606,9 @@ wp_default_nodes_set_property (GObject * object, guint property_id,
+     g_clear_pointer (&self->echo_cancel_names[WP_DIRECTION_OUTPUT], g_free);
+     self->echo_cancel_names[WP_DIRECTION_OUTPUT] = g_value_dup_string (value);
+     break;
++  case PROP_USE_ORIGINAL_PRIO:
++    self->use_original_prio = g_value_get_boolean (value);
++    break;
+   default:
+     G_OBJECT_WARN_INVALID_PROPERTY_ID (object, property_id, pspec);
+     break;
+@@ -652,6 +662,11 @@ wp_default_nodes_class_init (WpDefaultNodesClass * klass)
+       g_param_spec_string ("echo-cancel-source-name", "echo-cancel-source-name",
+           "echo-cancel-source-name", DEFAULT_ECHO_CANCEL_SOURCE_NAME,
+           G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
++
++  g_object_class_install_property (object_class, PROP_USE_ORIGINAL_PRIO,
++      g_param_spec_boolean ("use-original-prio", "use-original-prio",
++          "use-original-prio", DEFAULT_USE_ORIGINAL_PRIO,
++          G_PARAM_WRITABLE | G_PARAM_CONSTRUCT_ONLY | G_PARAM_STATIC_STRINGS));
+ }
+ 
+ WP_PLUGIN_EXPORT gboolean
+@@ -660,6 +675,7 @@ wireplumber__module_init (WpCore * core, GVariant * args, GError ** error)
+   guint save_interval_ms = DEFAULT_SAVE_INTERVAL_MS;
+   gboolean use_persistent_storage = DEFAULT_USE_PERSISTENT_STORAGE;
+   gboolean auto_echo_cancel = DEFAULT_AUTO_ECHO_CANCEL;
++  gboolean use_original_prio = DEFAULT_USE_ORIGINAL_PRIO;
+   const gchar *echo_cancel_sink_name = DEFAULT_ECHO_CANCEL_SINK_NAME;
+   const gchar *echo_cancel_source_name = DEFAULT_ECHO_CANCEL_SOURCE_NAME;
+ 
+@@ -672,6 +688,8 @@ wireplumber__module_init (WpCore * core, GVariant * args, GError ** error)
+         &echo_cancel_sink_name);
+     g_variant_lookup (args, "echo-cancel-source-name", "&s",
+         &echo_cancel_source_name);
++    g_variant_lookup (args, "use-original-prio", "b",
++        &use_original_prio);
+   }
+ 
+   wp_plugin_register (g_object_new (wp_default_nodes_get_type (),
+@@ -682,6 +700,7 @@ wireplumber__module_init (WpCore * core, GVariant * args, GError ** error)
+           "auto-echo-cancel", auto_echo_cancel,
+           "echo-cancel-sink-name", echo_cancel_sink_name,
+           "echo-cancel-source-name", echo_cancel_source_name,
++          "use-original-prio", use_original_prio,
+           NULL));
+   return TRUE;
+ }
+-- 
+2.34.1
+

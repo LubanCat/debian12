@@ -1,0 +1,39 @@
+From 1502c51f1863f11b077f7699b3e5d8bda79a9c7d Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Wed, 5 Jun 2019 21:22:43 +0800
+Subject: [PATCH 03/81] HACK: glamor: gles: Use same render_format as DESKTOP
+ for depth 24/32
+
+The render_format for GLES changed in:
+d67d15c80 glamor: Introduce a central place for our pixmap format/type handling.
+
+That would break glamor_render_format_is_supported(), let's hack it
+back.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor.c | 8 ++++----
+ 1 file changed, 4 insertions(+), 4 deletions(-)
+
+diff --git a/glamor/glamor.c b/glamor/glamor.c
+index d50aab0c4..6042bdb57 100644
+--- a/glamor/glamor.c
++++ b/glamor/glamor.c
+@@ -599,10 +599,10 @@ glamor_setup_formats(ScreenPtr screen)
+ 
+     if (glamor_priv->is_gles) {
+         assert(X_BYTE_ORDER == X_LITTLE_ENDIAN);
+-        glamor_add_format(screen, 24, PICT_x8b8g8r8,
+-                          GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, TRUE);
+-        glamor_add_format(screen, 32, PICT_a8b8g8r8,
+-                          GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, TRUE);
++        glamor_add_format(screen, 24, PICT_x8r8g8b8,
++                          GL_BGRA, GL_BGRA, GL_UNSIGNED_BYTE, TRUE);
++        glamor_add_format(screen, 32, PICT_a8r8g8b8,
++                          GL_BGRA, GL_BGRA, GL_UNSIGNED_BYTE, TRUE);
+     } else {
+         glamor_add_format(screen, 24, PICT_x8r8g8b8,
+                           GL_RGBA, GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV, TRUE);
+-- 
+2.38.5
+

@@ -1,0 +1,312 @@
+From 2ee5e828d7c5b2de138d5edccb5132d892ae69f4 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 9 Jul 2019 19:47:41 +0800
+Subject: [PATCH 05/81] glamor: Store gbm_bo in glamor_pixmap_private instead
+ of egl image
+
+GBM_BO_IMPORT_EGL_IMAGE is not supported in mali gbm.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor_egl.c                           | 62 +++++++++----------
+ glamor/glamor_priv.h                          |  7 ++-
+ .../drivers/modesetting/drmmode_display.c     |  4 +-
+ .../drivers/modesetting/drmmode_display.h     |  1 +
+ hw/xfree86/drivers/modesetting/pageflip.c     |  3 +
+ hw/xfree86/drivers/modesetting/present.c      |  1 -
+ 6 files changed, 42 insertions(+), 36 deletions(-)
+
+diff --git a/glamor/glamor_egl.c b/glamor/glamor_egl.c
+index 4a9d9ef30..4604b571f 100644
+--- a/glamor/glamor_egl.c
++++ b/glamor/glamor_egl.c
+@@ -164,22 +164,17 @@ glamor_egl_create_textured_screen(ScreenPtr screen, int handle, int stride)
+ }
+ 
+ static void
+-glamor_egl_set_pixmap_image(PixmapPtr pixmap, EGLImageKHR image,
+-                            Bool used_modifiers)
++glamor_egl_set_pixmap_bo(PixmapPtr pixmap, struct gbm_bo *bo,
++                         Bool used_modifiers)
+ {
+     struct glamor_pixmap_private *pixmap_priv =
+         glamor_get_pixmap_private(pixmap);
+-    EGLImageKHR old;
+ 
+-    old = pixmap_priv->image;
+-    if (old) {
+-        ScreenPtr                               screen = pixmap->drawable.pScreen;
+-        ScrnInfoPtr                             scrn = xf86ScreenToScrn(screen);
+-        struct glamor_egl_screen_private        *glamor_egl = glamor_egl_get_screen_private(scrn);
++    if (pixmap_priv->bo && pixmap_priv->owned_bo)
++        gbm_bo_destroy(pixmap_priv->bo);
+ 
+-        eglDestroyImageKHR(glamor_egl->display, old);
+-    }
+-    pixmap_priv->image = image;
++    pixmap_priv->bo = bo;
++    pixmap_priv->owned_bo = TRUE;
+     pixmap_priv->used_modifiers = used_modifiers;
+ }
+ 
+@@ -227,6 +222,8 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
+     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+     struct glamor_screen_private *glamor_priv =
+         glamor_get_screen_private(screen);
++    struct glamor_pixmap_private *pixmap_priv =
++        glamor_get_pixmap_private(pixmap);
+     struct glamor_egl_screen_private *glamor_egl;
+     EGLImageKHR image;
+     GLuint texture;
+@@ -244,9 +241,13 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
+         goto done;
+     }
+     glamor_create_texture_from_image(screen, image, &texture);
++    eglDestroyImage(glamor_egl->display, image);
+     glamor_set_pixmap_type(pixmap, GLAMOR_TEXTURE_DRM);
+     glamor_set_pixmap_texture(pixmap, texture);
+-    glamor_egl_set_pixmap_image(pixmap, image, used_modifiers);
++    glamor_egl_set_pixmap_bo(pixmap, bo, used_modifiers);
++
++    /* HACK: At least for mali DDK, the bo is owned by texture */
++    pixmap_priv->owned_bo = FALSE;
+     ret = TRUE;
+ 
+  done:
+@@ -280,7 +281,7 @@ glamor_make_pixmap_exportable(PixmapPtr pixmap, Bool modifiers_ok)
+     PixmapPtr exported;
+     GCPtr scratch_gc;
+ 
+-    if (pixmap_priv->image &&
++    if (pixmap_priv->bo &&
+         (modifiers_ok || !pixmap_priv->used_modifiers))
+         return TRUE;
+ 
+@@ -352,7 +353,6 @@ glamor_make_pixmap_exportable(PixmapPtr pixmap, Bool modifiers_ok)
+         gbm_bo_destroy(bo);
+         return FALSE;
+     }
+-    gbm_bo_destroy(bo);
+ 
+     scratch_gc = GetScratchGC(pixmap->drawable.depth, screen);
+     ValidateGC(&pixmap->drawable, scratch_gc);
+@@ -377,16 +377,13 @@ glamor_make_pixmap_exportable(PixmapPtr pixmap, Bool modifiers_ok)
+ static struct gbm_bo *
+ glamor_gbm_bo_from_pixmap_internal(ScreenPtr screen, PixmapPtr pixmap)
+ {
+-    struct glamor_egl_screen_private *glamor_egl =
+-        glamor_egl_get_screen_private(xf86ScreenToScrn(screen));
+     struct glamor_pixmap_private *pixmap_priv =
+         glamor_get_pixmap_private(pixmap);
+ 
+-    if (!pixmap_priv->image)
++    if (!pixmap_priv->bo)
+         return NULL;
+ 
+-    return gbm_bo_import(glamor_egl->gbm, GBM_BO_IMPORT_EGL_IMAGE,
+-                         pixmap_priv->image, 0);
++    return pixmap_priv->bo;
+ }
+ 
+ struct gbm_bo *
+@@ -433,7 +430,6 @@ glamor_egl_fds_from_pixmap(ScreenPtr screen, PixmapPtr pixmap, int *fds,
+     *modifier = DRM_FORMAT_MOD_INVALID;
+ #endif
+ 
+-    gbm_bo_destroy(bo);
+     return num_fds;
+ #else
+     return 0;
+@@ -458,7 +454,6 @@ glamor_egl_fd_from_pixmap(ScreenPtr screen, PixmapPtr pixmap,
+     fd = gbm_bo_get_fd(bo);
+     *stride = gbm_bo_get_stride(bo);
+     *size = *stride * gbm_bo_get_height(bo);
+-    gbm_bo_destroy(bo);
+ 
+     return fd;
+ #else
+@@ -489,8 +484,6 @@ glamor_egl_fd_name_from_pixmap(ScreenPtr screen,
+     glamor_get_name_from_bo(glamor_egl->fd, bo, &fd);
+     *stride = pixmap->devKind;
+     *size = pixmap->devKind * gbm_bo_get_height(bo);
+-
+-    gbm_bo_destroy(bo);
+  failure:
+     return fd;
+ }
+@@ -529,7 +522,9 @@ glamor_back_pixmap_from_fd(PixmapPtr pixmap,
+     screen->ModifyPixmapHeader(pixmap, width, height, 0, 0, stride, NULL);
+ 
+     ret = glamor_egl_create_textured_pixmap_from_gbm_bo(pixmap, bo, FALSE);
+-    gbm_bo_destroy(bo);
++    if (!ret)
++        gbm_bo_destroy(bo);
++
+     return ret;
+ }
+ 
+@@ -586,7 +581,8 @@ glamor_pixmap_from_fds(ScreenPtr screen,
+         if (bo) {
+             screen->ModifyPixmapHeader(pixmap, width, height, 0, 0, strides[0], NULL);
+             ret = glamor_egl_create_textured_pixmap_from_gbm_bo(pixmap, bo, TRUE);
+-            gbm_bo_destroy(bo);
++            if (!ret)
++                gbm_bo_destroy(bo);
+         }
+     } else
+ #endif
+@@ -736,8 +732,8 @@ glamor_egl_destroy_pixmap(PixmapPtr pixmap)
+         struct glamor_pixmap_private *pixmap_priv =
+             glamor_get_pixmap_private(pixmap);
+ 
+-        if (pixmap_priv->image)
+-            eglDestroyImageKHR(glamor_egl->display, pixmap_priv->image);
++        if (pixmap_priv->bo)
++            gbm_bo_destroy(pixmap_priv->bo);
+     }
+ 
+     screen->DestroyPixmap = glamor_egl->saved_destroy_pixmap;
+@@ -751,7 +747,7 @@ glamor_egl_destroy_pixmap(PixmapPtr pixmap)
+ _X_EXPORT void
+ glamor_egl_exchange_buffers(PixmapPtr front, PixmapPtr back)
+ {
+-    EGLImageKHR temp_img;
++    struct gbm_bo *temp_bo;
+     Bool temp_mod;
+     struct glamor_pixmap_private *front_priv =
+         glamor_get_pixmap_private(front);
+@@ -760,11 +756,11 @@ glamor_egl_exchange_buffers(PixmapPtr front, PixmapPtr back)
+ 
+     glamor_pixmap_exchange_fbos(front, back);
+ 
+-    temp_img = back_priv->image;
++    temp_bo = back_priv->bo;
+     temp_mod = back_priv->used_modifiers;
+-    back_priv->image = front_priv->image;
++    back_priv->bo = front_priv->bo;
+     back_priv->used_modifiers = front_priv->used_modifiers;
+-    front_priv->image = temp_img;
++    front_priv->bo = temp_bo;
+     front_priv->used_modifiers = temp_mod;
+ 
+     glamor_set_pixmap_type(front, GLAMOR_TEXTURE_DRM);
+@@ -784,8 +780,8 @@ glamor_egl_close_screen(ScreenPtr screen)
+     screen_pixmap = screen->GetScreenPixmap(screen);
+     pixmap_priv = glamor_get_pixmap_private(screen_pixmap);
+ 
+-    eglDestroyImageKHR(glamor_egl->display, pixmap_priv->image);
+-    pixmap_priv->image = NULL;
++    gbm_bo_destroy(pixmap_priv->bo);
++    pixmap_priv->bo = NULL;
+ 
+     screen->CloseScreen = glamor_egl->saved_close_screen;
+ 
+diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
+index 028a6d374..95548b1b1 100644
+--- a/glamor/glamor_priv.h
++++ b/glamor/glamor_priv.h
+@@ -57,6 +57,10 @@
+ 
+ #include <list.h>
+ 
++#ifdef GLAMOR_HAS_GBM
++#include <gbm.h>
++#endif
++
+ struct glamor_pixmap_private;
+ 
+ typedef struct glamor_composite_shader {
+@@ -364,7 +368,8 @@ typedef struct glamor_pixmap_private {
+     RegionRec prepare_region;
+     Bool prepared;
+ #ifdef GLAMOR_HAS_GBM
+-    EGLImageKHR image;
++    struct gbm_bo *bo;
++    Bool owned_bo;
+     Bool used_modifiers;
+ #endif
+     /** block width of this large pixmap. */
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 48dccad73..4afaf2870 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -960,7 +960,7 @@ drmmode_bo_destroy(drmmode_ptr drmmode, drmmode_bo *bo)
+     int ret;
+ 
+ #ifdef GLAMOR_HAS_GBM
+-    if (bo->gbm) {
++    if (bo->owned_gbm && bo->gbm) {
+         gbm_bo_destroy(bo->gbm);
+         bo->gbm = NULL;
+     }
+@@ -1123,6 +1123,7 @@ drmmode_create_bo(drmmode_ptr drmmode, drmmode_bo *bo,
+         bo->gbm = gbm_bo_create(drmmode->gbm, width, height, format,
+                                 GBM_BO_USE_RENDERING | GBM_BO_USE_SCANOUT);
+         bo->used_modifiers = FALSE;
++        bo->owned_gbm = TRUE;
+         return bo->gbm != NULL;
+     }
+ #endif
+@@ -3401,6 +3402,7 @@ drmmode_set_pixmap_bo(drmmode_ptr drmmode, PixmapPtr pixmap, drmmode_bo *bo)
+         xf86DrvMsg(scrn->scrnIndex, X_ERROR, "Failed to create pixmap\n");
+         return FALSE;
+     }
++    bo->owned_gbm = FALSE;
+ #endif
+ 
+     return TRUE;
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.h b/hw/xfree86/drivers/modesetting/drmmode_display.h
+index 29f9b8f7d..17ba4e95e 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.h
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.h
+@@ -82,6 +82,7 @@ typedef struct {
+ #ifdef GLAMOR_HAS_GBM
+     Bool used_modifiers;
+     struct gbm_bo *gbm;
++    Bool owned_gbm;
+ #endif
+ } drmmode_bo;
+ 
+diff --git a/hw/xfree86/drivers/modesetting/pageflip.c b/hw/xfree86/drivers/modesetting/pageflip.c
+index 23ee95f9a..fdd740039 100644
+--- a/hw/xfree86/drivers/modesetting/pageflip.c
++++ b/hw/xfree86/drivers/modesetting/pageflip.c
+@@ -329,6 +329,7 @@ ms_do_pageflip(ScreenPtr screen,
+ 
+     flipdata = calloc(1, sizeof(struct ms_flipdata));
+     if (!flipdata) {
++        new_front_bo.gbm = NULL;
+         drmmode_bo_destroy(&ms->drmmode, &new_front_bo);
+         xf86DrvMsg(scrn->scrnIndex, X_ERROR,
+                    "%s: Failed to allocate flipdata.\n", log_prefix);
+@@ -428,6 +429,7 @@ ms_do_pageflip(ScreenPtr screen,
+         }
+     }
+ 
++    new_front_bo.gbm = NULL;
+     drmmode_bo_destroy(&ms->drmmode, &new_front_bo);
+ 
+     /*
+@@ -453,6 +455,7 @@ error_undo:
+     }
+ 
+ error_out:
++    new_front_bo.gbm = NULL;
+     drmmode_bo_destroy(&ms->drmmode, &new_front_bo);
+     /* if only the local reference - free the structure,
+      * else drop the local reference and return */
+diff --git a/hw/xfree86/drivers/modesetting/present.c b/hw/xfree86/drivers/modesetting/present.c
+index c3266d871..ab18cf0ea 100644
+--- a/hw/xfree86/drivers/modesetting/present.c
++++ b/hw/xfree86/drivers/modesetting/present.c
+@@ -287,7 +287,6 @@ ms_present_check_unflip(RRCrtcPtr crtc,
+ 
+         format = gbm_bo_get_format(gbm);
+         modifier = gbm_bo_get_modifier(gbm);
+-        gbm_bo_destroy(gbm);
+ 
+         if (!drmmode_is_format_supported(scrn, format, modifier)) {
+             if (reason)
+-- 
+2.38.5
+

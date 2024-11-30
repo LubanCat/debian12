@@ -1,0 +1,33 @@
+From 22561e59c9ddbc55556fa61435cc7579cbb69ebb Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 12 Mar 2020 12:00:56 +0800
+Subject: [PATCH 37/81] HACK: modesetting: Disable fallback probe when having
+ other options
+
+Using fallback probe might cause fatal error when there're PCI devices
+available:
+Fatal server error: (EE) cannot run in framebuffer mode. Please specify
+busIDs for all framebuffer devices (EE) (EE)
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 08ae861c8..d8fc94daf 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -482,6 +482,9 @@ Probe(DriverPtr drv, int flags)
+     const char *dev;
+     ScrnInfoPtr scrn = NULL;
+ 
++    if (XSERVER_PLATFORM_BUS || XSERVER_LIBPCIACCESS)
++        return FALSE;
++
+     /* For now, just bail out for PROBE_DETECT. */
+     if (flags & PROBE_DETECT)
+         return FALSE;
+-- 
+2.38.5
+

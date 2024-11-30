@@ -1,0 +1,33 @@
+From 9d851fcae9413e4acc4675c23c98954384beb4b1 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 12:14:32 +0800
+Subject: [PATCH 27/81] modesetting: dri2: Fix memory leak of drmVersion
+
+Fix leaking drmVersion in msShouldDoubleShadow().
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 64008dd41..4438a6f24 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1007,11 +1007,12 @@ msShouldDoubleShadow(ScrnInfoPtr pScrn, modesettingPtr ms)
+ {
+     Bool ret = FALSE, asked;
+     int from;
+-    drmVersionPtr v = drmGetVersion(ms->fd);
++    drmVersionPtr v;
+ 
+     if (!ms->drmmode.shadow_enable)
+         return FALSE;
+ 
++    v = drmGetVersion(ms->fd);
+     if (!strcmp(v->name, "mgag200") ||
+         !strcmp(v->name, "ast")) /* XXX || rn50 */
+         ret = TRUE;
+-- 
+2.38.5
+

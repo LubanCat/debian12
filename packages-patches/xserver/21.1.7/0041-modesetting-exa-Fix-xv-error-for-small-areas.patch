@@ -1,0 +1,46 @@
+From b8bed106ab33534689eb0147a1466834ebdb73f4 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 22 Oct 2020 10:51:02 +0800
+Subject: [PATCH 41/81] modesetting: exa: Fix xv error for small areas
+
+RGA could not handle small areas, and there's no software fallback for
+YUV format.
+
+Let's just ignore those areas to avoid breaking the video flow.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/exa.c | 12 ++++++++----
+ 1 file changed, 8 insertions(+), 4 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/exa.c b/hw/xfree86/drivers/modesetting/exa.c
+index 9e5bd03cc..e229e9a56 100644
+--- a/hw/xfree86/drivers/modesetting/exa.c
++++ b/hw/xfree86/drivers/modesetting/exa.c
+@@ -1076,15 +1076,19 @@ ms_exa_copy_area(PixmapPtr pSrc, PixmapPtr pDst,
+         /* rga has scale limits */
+         if ((double)sw / dw > 16 || (double)dw / sw > 16 ||
+             (double)sh / dh > 16 || (double)dh / sh > 16)
+-            goto bail;
++            goto err;
+ 
+         if (!rga_prepare_info(pSrc, &src_info, sx, sy, sw, sh))
+-            goto bail;
++            goto err;
+ 
+         if (!rga_prepare_info(pDst, &dst_info, dx, dy, dw, dh))
+-            goto bail;
++            goto err;
+ 
+-        if (c_RkRgaBlit(&src_info, &dst_info, NULL) < 0)
++        if (!c_RkRgaBlit(&src_info, &dst_info, NULL))
++            continue;
++err:
++        /* HACK: Ignoring errors for YUV, since xserver cannot handle it */
++        if (!PIXMAP_IS_YUV(pSrc) && !PIXMAP_IS_YUV(pDst))
+             goto bail;
+     }
+ 
+-- 
+2.38.5
+

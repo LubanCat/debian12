@@ -1,0 +1,33 @@
+From 2a0658dc3e7edd09d780fe3ec3fb44a45199b500 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 8 Nov 2019 15:44:41 +0800
+Subject: [PATCH 11/81] glamor: xv: Fix invalid accessing of plane attributes
+ for NV12
+
+NV12 only has 2 planes.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor_xv.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/glamor/glamor_xv.c b/glamor/glamor_xv.c
+index 836a2c94a..4f135688c 100644
+--- a/glamor/glamor_xv.c
++++ b/glamor/glamor_xv.c
+@@ -393,10 +393,10 @@ glamor_xv_query_image_attributes(int id,
+             pitches[0] = size;
+         size *= *h;
+         if (offsets)
+-            offsets[1] = offsets[2] = size;
++            offsets[1] = size;
+         tmp = ALIGN(*w, 4);
+         if (pitches)
+-            pitches[1] = pitches[2] = tmp;
++            pitches[1] = tmp;
+         tmp *= (*h >> 1);
+         size += tmp;
+         break;
+-- 
+2.38.5
+

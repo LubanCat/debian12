@@ -1,0 +1,97 @@
+From 654491d1ff4727526319b52904019aedcfb3b766 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 20 Oct 2023 11:24:11 +0800
+Subject: [PATCH 78/81] glamor: Make GL_{ARB, OES}_texture_border_clamp
+ optional
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor.c        | 15 ++++-----------
+ glamor/glamor_priv.h   |  1 +
+ glamor/glamor_render.c | 11 ++++++++---
+ 3 files changed, 13 insertions(+), 14 deletions(-)
+
+diff --git a/glamor/glamor.c b/glamor/glamor.c
+index dec533eb1..e23170ada 100644
+--- a/glamor/glamor.c
++++ b/glamor/glamor.c
+@@ -755,12 +755,6 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+             goto fail;
+         }
+ 
+-        if (!glamor_priv->is_core_profile &&
+-            !epoxy_has_gl_extension("GL_ARB_texture_border_clamp")) {
+-            ErrorF("GL_ARB_texture_border_clamp required\n");
+-            goto fail;
+-        }
+-
+         if (!glamor_check_instruction_count(gl_version))
+             goto fail;
+ 
+@@ -781,11 +775,6 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+             ErrorF("GL_EXT_texture_format_BGRA8888 required\n");
+             goto fail;
+         }
+-
+-        if (!epoxy_has_gl_extension("GL_OES_texture_border_clamp")) {
+-            ErrorF("GL_OES_texture_border_clamp required\n");
+-            goto fail;
+-        }
+     }
+ 
+     if (!epoxy_has_gl_extension("GL_ARB_vertex_array_object") &&
+@@ -794,6 +783,10 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+         goto fail;
+     }
+ 
++    glamor_priv->has_border_clamp =
++        epoxy_has_gl_extension("GL_ARB_texture_border_clamp") ||
++        epoxy_has_gl_extension("GL_OES_texture_border_clamp");
++
+     if (!glamor_priv->is_gles && glamor_priv->glsl_version == 120 &&
+         epoxy_has_gl_extension("GL_ARB_instanced_arrays"))
+         glamor_priv->use_gpu_shader4 = epoxy_has_gl_extension("GL_EXT_gpu_shader4");
+diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
+index 1b98eede6..efe809b36 100644
+--- a/glamor/glamor_priv.h
++++ b/glamor/glamor_priv.h
+@@ -225,6 +225,7 @@ typedef struct glamor_screen_private {
+     Bool has_dual_blend;
+     Bool has_clear_texture;
+     Bool has_texture_swizzle;
++    Bool has_border_clamp;
+     Bool is_core_profile;
+     Bool can_copyplane;
+     Bool use_gpu_shader4;
+diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
+index ac6aab1d2..f97d9a52a 100644
+--- a/glamor/glamor_render.c
++++ b/glamor/glamor_render.c
+@@ -533,8 +533,13 @@ glamor_set_composite_texture(glamor_screen_private *glamor_priv, int unit,
+     repeat_type = picture->repeatType;
+     switch (picture->repeatType) {
+     case RepeatNone:
+-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
++        if (glamor_priv->has_border_clamp) {
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
++        } else {
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++        }
+         break;
+     case RepeatNormal:
+         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+@@ -570,7 +575,7 @@ glamor_set_composite_texture(glamor_screen_private *glamor_priv, int unit,
+      * is RGB (no alpha), which we use for 16bpp textures.
+      */
+     if (glamor_pixmap_priv_is_large(pixmap_priv) ||
+-        (!PICT_FORMAT_A(picture->format) &&
++        ((!PICT_FORMAT_A(picture->format) || !glamor_priv->has_border_clamp) &&
+          repeat_type == RepeatNone && picture->transform)) {
+         glamor_pixmap_fbo_fix_wh_ratio(wh, pixmap, pixmap_priv);
+         glUniform4fv(wh_location, 1, wh);
+-- 
+2.38.5
+

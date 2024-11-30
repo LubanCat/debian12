@@ -1,0 +1,31 @@
+From 1ccd473748fe4a7ebcffd6d96e4e18bcfacacd3e Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 15 Oct 2021 11:30:59 +0800
+Subject: [PATCH 48/81] modesetting: Filter out invalid format modifiers
+
+The glamor egl doesn't importing gbm bo with modifier.
+
+So we need to filter out invalid format modifiers to avoid false alarm.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/drmmode_display.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index c2810d4f6..d13af83a3 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -2240,6 +2240,9 @@ populate_format_modifiers(xf86CrtcPtr crtc, const drmModePlane *kplane,
+             if (!(mod->formats & (1 << (i - mod->offset))))
+                 continue;
+ 
++            if (!mod->modifier || mod->modifier == DRM_FORMAT_MOD_INVALID)
++                continue;
++
+             num_modifiers++;
+             tmp = realloc(modifiers, num_modifiers * sizeof(modifiers[0]));
+             if (!tmp) {
+-- 
+2.38.5
+

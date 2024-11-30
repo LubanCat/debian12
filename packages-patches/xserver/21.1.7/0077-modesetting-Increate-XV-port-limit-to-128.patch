@@ -1,0 +1,37 @@
+From 878082e26b0cb4a3ab4dbb52dc847221e5a1a163 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 13 Oct 2023 09:14:37 +0800
+Subject: [PATCH 77/81] modesetting: Increate XV port limit to 128
+
+We are powerful!
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 7c441d57b..061647db4 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -2059,7 +2059,7 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
+ 
+ #ifdef GLAMOR_HAS_GBM
+     if (ms->drmmode.glamor) {
+-        ms->adaptor = ms->glamor.xv_init(pScreen, 16);
++        ms->adaptor = ms->glamor.xv_init(pScreen, 128);
+         if (ms->adaptor != NULL)
+             xf86XVScreenInit(pScreen, &ms->adaptor, 1);
+         else
+@@ -2069,7 +2069,7 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
+ #endif
+ 
+     if (ms->drmmode.exa) {
+-        ms->adaptor = ms_exa_xv_init(pScreen, 16);
++        ms->adaptor = ms_exa_xv_init(pScreen, 128);
+         if (ms->adaptor != NULL) {
+             xf86XVScreenInit(pScreen, &ms->adaptor, 1);
+         } else {
+-- 
+2.38.5
+

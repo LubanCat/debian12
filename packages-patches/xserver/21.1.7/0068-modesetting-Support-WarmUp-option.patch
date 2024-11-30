@@ -1,0 +1,74 @@
+From b41ed7ed14e8a9011baf68c05fb1d09cbdbf5c0e Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 16 Sep 2022 17:53:13 +0800
+Subject: [PATCH 68/81] modesetting: Support WarmUp option
+
+Support warming up by ignoring the first display request.
+
+This option is enabled by default.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 10 ++++++++++
+ hw/xfree86/drivers/modesetting/driver.h |  3 +++
+ 2 files changed, 13 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 74a023999..3883cc201 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -163,6 +163,7 @@ static const OptionInfoRec Options[] = {
+     {OPTION_BIND_CURRENT, "BindCurrent", OPTV_BOOLEAN, {0}, FALSE},
+     {OPTION_NO_EDID, "NoEDID", OPTV_BOOLEAN, {0}, FALSE},
+     {OPTION_HOTPLUG_RESET, "HotplugReset", OPTV_BOOLEAN, {0}, FALSE},
++    {OPTION_WARM_UP, "WarmUp", OPTV_BOOLEAN, {0}, FALSE},
+     {-1, NULL, OPTV_NONE, {0}, FALSE}
+ };
+ 
+@@ -762,6 +763,12 @@ msBlockHandler_oneshot(ScreenPtr pScreen, void *pTimeout)
+     ScrnInfoPtr pScrn = xf86ScreenToScrn(pScreen);
+     modesettingPtr ms = modesettingPTR(pScrn);
+ 
++    /* HACK: Ignore the first request */
++    if (ms->warm_up) {
++        ms->warm_up = FALSE;
++        return;
++    }
++
+     msBlockHandler(pScreen, pTimeout);
+ 
+     drmmode_set_desired_modes(pScrn, &ms->drmmode, TRUE, FALSE);
+@@ -1286,6 +1293,9 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+     ms->drmmode.hotplug_reset =
+         xf86ReturnOptValBool(ms->drmmode.Options, OPTION_HOTPLUG_RESET, TRUE);
+ 
++    ms->warm_up =
++        xf86ReturnOptValBool(ms->drmmode.Options, OPTION_WARM_UP, TRUE);
++
+     str_value = xf86GetOptValString(ms->drmmode.Options, OPTION_FLIP_FB);
+     if (!str_value || !strcmp(str_value, "transformed"))
+         ms->drmmode.fb_flip_mode = DRMMODE_FB_FLIP_TRANSFORMED;
+diff --git a/hw/xfree86/drivers/modesetting/driver.h b/hw/xfree86/drivers/modesetting/driver.h
+index 2aea31023..357e6a124 100644
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -67,6 +67,7 @@ typedef enum {
+     OPTION_BIND_CURRENT,
+     OPTION_NO_EDID,
+     OPTION_HOTPLUG_RESET,
++    OPTION_WARM_UP,
+ } modesettingOpts;
+ 
+ typedef struct
+@@ -191,6 +192,8 @@ typedef struct _modesettingRec {
+         void *(*GetPrivate)(PixmapPtr);
+     } exa;
+ 
++    Bool warm_up;
++
+     XF86VideoAdaptorPtr adaptor;
+ } modesettingRec, *modesettingPtr;
+ 
+-- 
+2.38.5
+

@@ -1,0 +1,41 @@
+From 6ec4c12d055fcdb1dadff206f983c0643b1ab938 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 28 Jun 2019 17:27:16 +0800
+Subject: [PATCH 17/81] glamor: xv: Fix sw cursor rendering issue
+
+When reporting damage, the misprite swcursor will try to remove cursor
+by restoring the under cursor area.
+
+This will override the previous draw, so we need to move it before
+the rendering.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor_xv.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/glamor/glamor_xv.c b/glamor/glamor_xv.c
+index 4f135688c..8968ea4db 100644
+--- a/glamor/glamor_xv.c
++++ b/glamor/glamor_xv.c
+@@ -436,6 +436,8 @@ glamor_xv_render(glamor_port_private *port_priv, int id)
+     char *vbo_offset;
+     int dst_box_index;
+ 
++    DamageRegionAppend(port_priv->pDraw, &port_priv->clip);
++
+     if (!glamor_priv->xv_prog.prog)
+         glamor_init_xv_shader(screen, id);
+ 
+@@ -581,7 +583,7 @@ glamor_xv_render(glamor_port_private *port_priv, int id)
+     glDisableVertexAttribArray(GLAMOR_VERTEX_POS);
+     glDisableVertexAttribArray(GLAMOR_VERTEX_SOURCE);
+ 
+-    DamageDamageRegion(port_priv->pDraw, &port_priv->clip);
++    DamageRegionProcessPending(port_priv->pDraw);
+ 
+     glamor_xv_free_port_data(port_priv);
+ 
+-- 
+2.38.5
+

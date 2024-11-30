@@ -1,0 +1,221 @@
+From 0f2cdb1dccd555392bf7e2a3ce69eae88c5a33fa Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 23 Sep 2022 17:24:12 +0800
+Subject: [PATCH 76/92] HACK: Honour cursor-size config
+
+By scaling the cursor surface.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ compositor/main.c             |  2 ++
+ include/libweston/libweston.h |  4 ++++
+ libweston/backend-drm/drm.c   |  3 +++
+ libweston/compositor.c        | 36 +++++++++++++++++++++++++-------
+ libweston/input.c             | 39 +++++++++++++++++++++++++++++++----
+ 5 files changed, 72 insertions(+), 12 deletions(-)
+
+diff --git a/compositor/main.c b/compositor/main.c
+index 8b6b18ce..2cf37c46 100644
+--- a/compositor/main.c
++++ b/compositor/main.c
+@@ -3615,6 +3615,8 @@ wet_main(int argc, char *argv[], const struct weston_testsuite_data *test_data)
+ 	section = weston_config_get_section(config, "shell", NULL, NULL);
+ 	weston_config_section_get_bool(section, "hide-cursor",
+ 				       &wet.compositor->hide_cursor, false);
++	weston_config_section_get_int(section, "cursor-size",
++				      &wet.compositor->cursor_size, 0);
+ 
+ 	for (i = 1; i < argc; i++)
+ 		weston_log("fatal: unhandled option: %s\n", argv[i]);
+diff --git a/include/libweston/libweston.h b/include/libweston/libweston.h
+index 1d651c52..4f6fb796 100644
+--- a/include/libweston/libweston.h
++++ b/include/libweston/libweston.h
+@@ -579,6 +579,8 @@ struct weston_pointer {
+ 	struct wl_listener output_destroy_listener;
+ 
+ 	struct wl_list timestamps_list;
++
++	float scale;
+ };
+ 
+ /** libinput style calibration matrix
+@@ -1216,6 +1218,8 @@ struct weston_compositor {
+ 	bool hide_cursor;
+ 
+ 	uint32_t pending_fade_out;
++
++	int cursor_size;
+ };
+ 
+ struct weston_buffer {
+diff --git a/libweston/backend-drm/drm.c b/libweston/backend-drm/drm.c
+index 4a872bc5..0efd4198 100644
+--- a/libweston/backend-drm/drm.c
++++ b/libweston/backend-drm/drm.c
+@@ -4349,6 +4349,9 @@ drm_backend_create(struct weston_compositor *compositor,
+ 		goto err_udev_dev;
+ 	}
+ 
++	if (compositor->cursor_size)
++		b->cursor_width = b->cursor_height = compositor->cursor_size;
++
+ 	res = drmModeGetResources(b->drm.fd);
+ 	if (!res) {
+ 		weston_log("Failed to get drmModeRes\n");
+diff --git a/libweston/compositor.c b/libweston/compositor.c
+index 11263209..a47103fa 100644
+--- a/libweston/compositor.c
++++ b/libweston/compositor.c
+@@ -756,8 +756,14 @@ weston_transformed_coord(int width, int height,
+ 		break;
+ 	}
+ 
+-	*bx *= scale;
+-	*by *= scale;
++	/* HACK: Use -scale as 1/scale */
++	if (scale < 0) {
++		*bx /= -scale;
++		*by /= -scale;
++	} else {
++		*bx *= scale;
++		*by *= scale;
++	}
+ }
+ 
+ /** Transform a rectangle to buffer coordinates
+@@ -2180,22 +2186,31 @@ convert_size_by_transform_scale(int32_t *width_out, int32_t *height_out,
+ 				uint32_t transform,
+ 				int32_t scale)
+ {
+-	assert(scale > 0);
++	assert(scale);
++
++	/* HACK: Use -scale as 1/scale */
++	if (scale < 0) {
++		width *= -scale;
++		height *= -scale;
++	} else {
++		width /= scale;
++		height /= scale;
++	}
+ 
+ 	switch (transform) {
+ 	case WL_OUTPUT_TRANSFORM_NORMAL:
+ 	case WL_OUTPUT_TRANSFORM_180:
+ 	case WL_OUTPUT_TRANSFORM_FLIPPED:
+ 	case WL_OUTPUT_TRANSFORM_FLIPPED_180:
+-		*width_out = width / scale;
+-		*height_out = height / scale;
++		*width_out = width;
++		*height_out = height;
+ 		break;
+ 	case WL_OUTPUT_TRANSFORM_90:
+ 	case WL_OUTPUT_TRANSFORM_270:
+ 	case WL_OUTPUT_TRANSFORM_FLIPPED_90:
+ 	case WL_OUTPUT_TRANSFORM_FLIPPED_270:
+-		*width_out = height / scale;
+-		*height_out = width / scale;
++		*width_out = height;
++		*height_out = width;
+ 		break;
+ 	default:
+ 		assert(0 && "invalid transform");
+@@ -3762,6 +3777,7 @@ weston_surface_build_buffer_matrix(const struct weston_surface *surface,
+ {
+ 	const struct weston_buffer_viewport *vp = &surface->buffer_viewport;
+ 	double src_width, src_height, dest_width, dest_height;
++	float scale = vp->buffer.scale;
+ 
+ 	weston_matrix_init(matrix);
+ 
+@@ -3829,7 +3845,11 @@ weston_surface_build_buffer_matrix(const struct weston_surface *surface,
+ 		break;
+ 	}
+ 
+-	weston_matrix_scale(matrix, vp->buffer.scale, vp->buffer.scale, 1);
++	/* HACK: Use -scale as 1/scale */
++	if (scale < 0)
++		scale = 1.0 / -scale;
++
++	weston_matrix_scale(matrix, scale, scale, 1);
+ }
+ 
+ /**
+diff --git a/libweston/input.c b/libweston/input.c
+index f7c5eb8a..581aed53 100644
+--- a/libweston/input.c
++++ b/libweston/input.c
+@@ -1728,8 +1728,8 @@ weston_pointer_move_to(struct weston_pointer *pointer,
+ 
+ 	if (pointer->sprite) {
+ 		weston_view_set_position(pointer->sprite,
+-					 ix - pointer->hotspot_x,
+-					 iy - pointer->hotspot_y);
++					 ix - pointer->hotspot_x * pointer->scale,
++					 iy - pointer->hotspot_y * pointer->scale);
+ 		weston_view_schedule_repaint(pointer->sprite);
+ 	}
+ 
+@@ -2682,6 +2682,33 @@ pointer_cursor_surface_get_label(struct weston_surface *surface,
+ 	return snprintf(buf, len, "cursor");
+ }
+ 
++static void
++pointer_cursor_scale(struct weston_pointer *pointer,
++		     struct weston_surface *surface)
++{
++	struct weston_compositor *compositor = surface->compositor;
++	float scale;
++
++	if (!compositor->cursor_size || !surface->width ||
++	    surface->width == compositor->cursor_size)
++		return;
++
++	if (compositor->cursor_size > surface->width) {
++		scale = compositor->cursor_size / surface->width;
++
++		/* HACK: Use -scale as 1/scale */
++		surface->buffer_viewport.buffer.scale = -scale;
++	} else {
++		scale = 1.0 / (surface->width / compositor->cursor_size);
++		surface->buffer_viewport.buffer.scale = 1 / scale;
++	}
++
++	surface->width *= scale;
++	surface->height *= scale;
++
++	pointer->scale = scale;
++}
++
+ static void
+ pointer_cursor_surface_committed(struct weston_surface *es,
+ 				 int32_t dx, int32_t dy)
+@@ -2694,11 +2721,13 @@ pointer_cursor_surface_committed(struct weston_surface *es,
+ 
+ 	assert(es == pointer->sprite->surface);
+ 
++	pointer_cursor_scale(pointer, es);
++
+ 	pointer->hotspot_x -= dx;
+ 	pointer->hotspot_y -= dy;
+ 
+-	x = wl_fixed_to_int(pointer->x) - pointer->hotspot_x;
+-	y = wl_fixed_to_int(pointer->y) - pointer->hotspot_y;
++	x = wl_fixed_to_int(pointer->x) - pointer->hotspot_x * pointer->scale;
++	y = wl_fixed_to_int(pointer->y) - pointer->hotspot_y * pointer->scale;
+ 
+ 	weston_view_set_position(pointer->sprite, x, y);
+ 
+@@ -3379,6 +3408,8 @@ weston_seat_init_pointer(struct weston_seat *seat)
+ 
+ 	seat_send_updated_caps(seat);
+ 
++	pointer->scale = 1.0;
++
+ 	return 0;
+ }
+ 
+-- 
+2.34.1
+

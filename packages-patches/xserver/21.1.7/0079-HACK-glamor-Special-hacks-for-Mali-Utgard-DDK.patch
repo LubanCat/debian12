@@ -1,0 +1,228 @@
+From 600eb681043e9a5a368482280b74026e29d9ec1c Mon Sep 17 00:00:00 2001
+From: Zheng Yang <zhengyang@rock-chips.com>
+Date: Mon, 13 Nov 2023 12:03:30 +0800
+Subject: [PATCH 79/81] HACK: glamor: Special hacks for Mali Utgard DDK
+
+Signed-off-by: Zheng Yang <zhengyang@rock-chips.com>
+Change-Id: I642de6b8e8f04ca6e5dfc0fbd6bf04e01d64a7ce
+---
+ glamor/glamor.c          | 25 ++++++++++++++++++++++++-
+ glamor/glamor_egl.c      | 15 +++++++++++++++
+ glamor/glamor_fbo.c      | 15 +++++++++++++--
+ glamor/glamor_picture.c  |  6 ++++++
+ glamor/glamor_prepare.c  |  9 ++++++++-
+ glamor/glamor_priv.h     |  9 +++++++++
+ glamor/glamor_transfer.c | 12 ++++++++++--
+ 7 files changed, 85 insertions(+), 6 deletions(-)
+
+diff --git a/glamor/glamor.c b/glamor/glamor.c
+index e23170ada..249c90645 100644
+--- a/glamor/glamor.c
++++ b/glamor/glamor.c
+@@ -275,6 +275,11 @@ glamor_block_handler(ScreenPtr screen)
+     glamor_make_current(glamor_priv);
+ 
+     if (glamor_priv->is_gles) {
++        /* HACK: utgrad doesn't support gl-fence */
++        if (glamor_priv->is_utgard) {
++            glamor_finish(screen);
++            return;
++        }
+ #ifdef GLAMOR_HAS_GL_FENCE
+         GLsync sync;
+ 
+@@ -521,7 +526,11 @@ glamor_add_format(ScreenPtr screen, int depth, CARD32 render_format,
+         glDeleteTextures(1, &tex);
+         glDeleteFramebuffers(1, &fbo);
+ 
+-        if (format != read_format || type != read_type) {
++        /*
++         * Hack: Since utgard driver always return read_format/read_type
++         * as constant value, we do not check format/type.
++         */
++        if ((format != read_format || type != read_type) && !glamor_priv->is_utgard) {
+             ErrorF("glamor: Implementation returned 0x%x/0x%x read format/type "
+                    "for depth %d, expected 0x%x/0x%x.  "
+                    "Falling back to software.\n",
+@@ -736,6 +745,11 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+         glamor_priv->glsl_version = 120;
+     }
+ 
++    /* HACK: ARM Mali-4xx use utgard DDK */
++    if (strstr((char *)glGetString(GL_RENDERER), "Mali-4") &&
++        strstr((char *)glGetString(GL_VENDOR), "ARM"))
++        glamor_priv->is_utgard = TRUE;
++
+     /* We'd like to require GL_ARB_map_buffer_range or
+      * GL_OES_map_buffer_range, since it offers more information to
+      * the driver than plain old glMapBuffer() or glBufferSubData().
+@@ -840,6 +854,15 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+          strstr((char *)glGetString(GL_RENDERER), "V3D")))
+         glamor_priv->use_quads = FALSE;
+ 
++    /* HACK: disable hdr_debug on utgard */
++    if (glamor_priv->is_utgard) {
++        glamor_priv->has_khr_debug = FALSE;
++        for(int i = 0 ; i < MaxBOTEX; i++) {
++            glamor_priv->bo_tex[i].fbo_tex_oes = 0;
++            glamor_priv->bo_tex[i].bo_oes = NULL;
++        }
++    }
++
+     glGetIntegerv(GL_MAX_RENDERBUFFER_SIZE, &glamor_priv->max_fbo_size);
+     glGetIntegerv(GL_MAX_TEXTURE_SIZE, &glamor_priv->max_fbo_size);
+     glGetIntegerv(GL_MAX_VIEWPORT_DIMS, max_viewport_size);
+diff --git a/glamor/glamor_egl.c b/glamor/glamor_egl.c
+index 269e8281a..e4e635d25 100644
+--- a/glamor/glamor_egl.c
++++ b/glamor/glamor_egl.c
+@@ -245,6 +245,21 @@ glamor_egl_create_textured_pixmap_from_gbm_bo(PixmapPtr pixmap,
+     glamor_create_texture_from_image(screen, image, &texture);
+     eglDestroyImage(glamor_egl->display, image);
+     glamor_set_pixmap_type(pixmap, GLAMOR_TEXTURE_DRM);
++
++    /* HACK: record texture and bo for utgard */
++    if(glamor_priv->is_utgard) {
++        int i;
++        for(i = 0 ; i < MaxBOTEX; i++) {
++            if(glamor_priv->bo_tex[i].bo_oes == NULL) {
++                glamor_priv->bo_tex[i].fbo_tex_oes = texture;
++                glamor_priv->bo_tex[i].bo_oes = bo;
++                break;
++            }
++        }
++        if (i == MaxBOTEX)
++            ErrorF("bo_tex is full,then bo will leak !!!\n");
++    }
++
+     glamor_set_pixmap_texture(pixmap, texture);
+     glamor_egl_set_pixmap_bo(pixmap, bo, used_modifiers);
+ 
+diff --git a/glamor/glamor_fbo.c b/glamor/glamor_fbo.c
+index e045d247e..2f242d397 100644
+--- a/glamor/glamor_fbo.c
++++ b/glamor/glamor_fbo.c
+@@ -38,9 +38,20 @@ glamor_destroy_fbo(glamor_screen_private *glamor_priv,
+ 
+     if (fbo->fb)
+         glDeleteFramebuffers(1, &fbo->fb);
+-    if (fbo->tex)
++    if (fbo->tex) {
+         glDeleteTextures(1, &fbo->tex);
+-
++        if(glamor_priv->is_utgard) {
++            for(int i = 0 ; i < MaxBOTEX; i++) {
++                if(fbo->tex == glamor_priv->bo_tex[i].fbo_tex_oes &&
++                   glamor_priv->bo_tex[i].bo_oes != NULL) {
++                    gbm_bo_destroy(glamor_priv->bo_tex[i].bo_oes);
++                    glamor_priv->bo_tex[i].fbo_tex_oes = 0;
++                    glamor_priv->bo_tex[i].bo_oes = NULL;
++                    break;
++                }
++            }
++        }
++    }
+     free(fbo);
+ }
+ 
+diff --git a/glamor/glamor_picture.c b/glamor/glamor_picture.c
+index 33b3bebd9..a779b605e 100644
+--- a/glamor/glamor_picture.c
++++ b/glamor/glamor_picture.c
+@@ -83,6 +83,9 @@ glamor_get_tex_format_type_from_pictformat(ScreenPtr pScreen,
+ 
+     switch (format) {
+     case PICT_a1:
++        /* HACK: utgard doesn't support PICT_a8 */
++        if (glamor_priv->is_utgard)
++            return FALSE;
+         *tex_format = glamor_priv->formats[1].format;
+         *tex_type = GL_UNSIGNED_BYTE;
+         *temp_format = PICT_a8;
+@@ -195,6 +198,9 @@ glamor_get_tex_format_type_from_pictformat(ScreenPtr pScreen,
+         break;
+ 
+     case PICT_a8:
++        /* HACK: utgard doesn't support PICT_a8 */
++        if (glamor_priv->is_utgard)
++            return FALSE;
+         *tex_format = glamor_priv->formats[8].format;
+         *tex_type = GL_UNSIGNED_BYTE;
+         break;
+diff --git a/glamor/glamor_prepare.c b/glamor/glamor_prepare.c
+index 3744725b7..ed779b20f 100644
+--- a/glamor/glamor_prepare.c
++++ b/glamor/glamor_prepare.c
+@@ -267,7 +267,14 @@ glamor_prepare_access_box(DrawablePtr drawable, glamor_access_t access,
+ void
+ glamor_finish_access(DrawablePtr drawable)
+ {
+-    glamor_finish_access_pixmap(glamor_get_drawable_pixmap(drawable), FALSE);
++    ScreenPtr screen = drawable->pScreen;
++    struct glamor_screen_private *glamor_priv =
++        glamor_get_screen_private(screen);
++
++    if(glamor_priv->is_utgard)
++        glamor_finish_access_pixmap(glamor_get_drawable_pixmap(drawable), TRUE);
++    else
++        glamor_finish_access_pixmap(glamor_get_drawable_pixmap(drawable), FALSE);
+ }
+ 
+ /*
+diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
+index efe809b36..d87e87441 100644
+--- a/glamor/glamor_priv.h
++++ b/glamor/glamor_priv.h
+@@ -208,6 +208,12 @@ struct glamor_saved_procs {
+     ScreenBlockHandlerProcPtr block_handler;
+ };
+ 
++#define MaxBOTEX 128
++typedef struct glamor_bo_tex_mg {
++    int fbo_tex_oes;
++    struct gbm_bo *bo_oes;
++} glamor_bo_tex_mg_t;
++
+ typedef struct glamor_screen_private {
+     Bool is_gles;
+     int glsl_version;
+@@ -232,6 +238,9 @@ typedef struct glamor_screen_private {
+     int max_fbo_size;
+     Bool gl_synced;
+ 
++    Bool is_utgard;
++    glamor_bo_tex_mg_t bo_tex[MaxBOTEX];
++
+     /**
+      * Stores information about supported formats. Note, that this list contains all
+      * supported pixel formats, including these that are not supported on GL side
+diff --git a/glamor/glamor_transfer.c b/glamor/glamor_transfer.c
+index e706e0fb4..edbfbdb4d 100644
+--- a/glamor/glamor_transfer.c
++++ b/glamor/glamor_transfer.c
+@@ -170,12 +170,20 @@ glamor_download_boxes(PixmapPtr pixmap, BoxPtr in_boxes, int in_nbox,
+             if (x2 <= x1 || y2 <= y1)
+                 continue;
+ 
++            /* HACK: Mali450 doesn't support GL_BGRA, use GL_RGBA instead */
++            GLenum format;
++
++            if (glamor_priv->is_utgard && f->format == GL_BGRA)
++                format = GL_RGBA;
++            else
++                format = f->format;
++
+             if (glamor_priv->has_pack_subimage ||
+                 x2 - x1 == byte_stride / bytes_per_pixel) {
+-                glReadPixels(x1 - box->x1, y1 - box->y1, x2 - x1, y2 - y1, f->format, f->type, bits + ofs);
++                glReadPixels(x1 - box->x1, y1 - box->y1, x2 - x1, y2 - y1, format, f->type, bits + ofs);
+             } else {
+                 for (; y1 < y2; y1++, ofs += byte_stride)
+-                    glReadPixels(x1 - box->x1, y1 - box->y1, x2 - x1, 1, f->format, f->type, bits + ofs);
++                    glReadPixels(x1 - box->x1, y1 - box->y1, x2 - x1, 1, format, f->type, bits + ofs);
+             }
+         }
+     }
+-- 
+2.38.5
+

@@ -1,0 +1,29 @@
+From 600acb623bf1cce3b56b693b368964ecc744faca Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Mon, 25 Apr 2022 10:14:11 +0800
+Subject: [PATCH 60/81] modesetting: Use miSourceValidate as dummy
+ SourceValidate
+
+Some new API might require a valid SourceValidate callback.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/drmmode_display.c | 2 +-
+ 1 file changed, 1 insertion(+), 1 deletion(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 2a63169cd..635692b95 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -5023,7 +5023,7 @@ drmmode_update_fb(xf86CrtcPtr crtc, drmmode_fb *fb)
+         goto out;
+     }
+ 
+-    screen->SourceValidate = NULL;
++    screen->SourceValidate = miSourceValidate;
+     if (drmmode->exa)
+         ret = ms_exa_copy_area(screen->GetScreenPixmap(screen), fb->pixmap,
+                                &crtc->f_crtc_to_framebuffer, dirty);
+-- 
+2.38.5
+

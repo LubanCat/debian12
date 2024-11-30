@@ -1,0 +1,42 @@
+From 0dd6b188c1b79e3a5af89d5a26f096e777ea5154 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 07:21:38 +0000
+Subject: [PATCH 26/81] modesetting: Avoid leaking output resources
+
+The output resources are only freed when destroying output. So we
+should not create them multiple times.
+
+Also add missing drmModeFreeObjectProperties() to avoid leaking
+properties.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/drmmode_display.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index d8ec2675e..4f4fe1eec 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -2878,6 +2878,10 @@ drmmode_output_create_resources(xf86OutputPtr output)
+     drmModePropertyPtr drmmode_prop;
+     int i, j, err;
+ 
++    /* already created */
++    if (drmmode_output->props)
++        return;
++
+     drmmode_output->props =
+         calloc(mode_output->count_props, sizeof(drmmode_prop_rec));
+     if (!drmmode_output->props)
+@@ -3359,6 +3363,7 @@ drmmode_output_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, drmModeResPtr mode_r
+                                            DRM_MODE_OBJECT_CONNECTOR);
+         drmmode_prop_info_update(drmmode, drmmode_output->props_connector,
+                                  DRMMODE_CONNECTOR__COUNT, props);
++        drmModeFreeObjectProperties(props);
+     } else {
+         drmmode_output->dpms_enum_id =
+             koutput_get_prop_id(drmmode->fd, koutput, DRM_MODE_PROP_ENUM,
+-- 
+2.38.5
+

@@ -1,0 +1,90 @@
+From 7d2d7cfe310fb8f803addf8a24a62bb52060295c Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 30 Aug 2019 12:33:12 +0800
+Subject: [PATCH 34/81] modesetting: Fix screen save issue when using atomic
+ modeset
+
+In atomic modeset case, the output's dpms property would not be updated
+when exiting screen save.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ .../drivers/modesetting/drmmode_display.c     | 39 ++++++++++++++-----
+ 1 file changed, 29 insertions(+), 10 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 618cdd368..af9af22e8 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -735,30 +735,49 @@ drmmode_set_dpms(ScrnInfoPtr scrn, int dpms, int flags)
+ }
+ 
+ static int
+-drmmode_output_disable(xf86OutputPtr output)
++drmmode_output_dpms_atomic(xf86OutputPtr output, int mode)
+ {
+     modesettingPtr ms = modesettingPTR(output->scrn);
+     drmmode_output_private_ptr drmmode_output = output->driver_private;
+     xf86CrtcPtr crtc = drmmode_output->current_crtc;
+-    drmModeAtomicReq *req = drmModeAtomicAlloc();
++    drmModeAtomicReq *req;
+     uint32_t flags = DRM_MODE_ATOMIC_ALLOW_MODESET;
+     int ret = 0;
+ 
++    if (mode == DPMSModeOn && !crtc)
++        return 1;
++
+     assert(ms->atomic_modeset);
+ 
++    req = drmModeAtomicAlloc();
+     if (!req)
+         return 1;
+ 
+-    ret |= connector_add_prop(req, drmmode_output,
+-                              DRMMODE_CONNECTOR_CRTC_ID, 0);
+     if (crtc)
+-        ret |= crtc_add_dpms_props(req, crtc, DPMSModeOff, NULL);
++        ret |= crtc_add_dpms_props(req, crtc, mode, NULL);
+ 
+-    if (ret == 0)
+-        ret = drmModeAtomicCommit(ms->fd, req, flags, NULL);
++    if (mode == DPMSModeOn) {
++        drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
++        drmModeModeInfo kmode;
++
++        drmmode_ConvertToKMode(crtc->scrn, &kmode, &crtc->mode);
++        ret |= drm_mode_ensure_blob(crtc, kmode);
++
++        ret |= connector_add_prop(req, drmmode_output,
++                                  DRMMODE_CONNECTOR_CRTC_ID,
++                                  drmmode_crtc->mode_crtc->crtc_id);
++        ret |= crtc_add_prop(req, drmmode_crtc,
++                             DRMMODE_CRTC_ACTIVE, 1);
++        ret |= crtc_add_prop(req, drmmode_crtc,
++                             DRMMODE_CRTC_MODE_ID,
++                             drmmode_crtc->current_mode->blob_id);
++    } else {
++        ret |= connector_add_prop(req, drmmode_output,
++                                  DRMMODE_CONNECTOR_CRTC_ID, 0);
++    }
+ 
+     if (ret == 0)
+-        drmmode_output->current_crtc = NULL;
++        ret = drmModeAtomicCommit(ms->fd, req, flags, NULL);
+ 
+     drmModeAtomicFree(req);
+     return ret;
+@@ -2838,8 +2857,8 @@ drmmode_output_dpms(xf86OutputPtr output, int mode)
+     drmmode_output->dpms = mode;
+ 
+     if (ms->atomic_modeset) {
+-        if (mode != DPMSModeOn && !ms->pending_modeset)
+-            drmmode_output_disable(output);
++        if (!ms->pending_modeset)
++            drmmode_output_dpms_atomic(output, mode);
+     } else {
+         drmModeConnectorSetProperty(drmmode->fd, koutput->connector_id,
+                                     drmmode_output->dpms_enum_id, mode);
+-- 
+2.38.5
+

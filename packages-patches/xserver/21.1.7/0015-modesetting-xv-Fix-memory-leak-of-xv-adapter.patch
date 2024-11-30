@@ -1,0 +1,77 @@
+From 9de21d41b7b36105f6f268490f3307a9fb45dfdd Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 07:34:51 +0000
+Subject: [PATCH 15/81] modesetting: xv: Fix memory leak of xv adapter
+
+The xv adapter is allocated during screen init, thus we need to free
+it in CloseScreen().
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 14 ++++++++------
+ hw/xfree86/drivers/modesetting/driver.h |  3 +++
+ 2 files changed, 11 insertions(+), 6 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index f156d2d42..76b70ae0d 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -53,7 +53,6 @@
+ #include "xf86Crtc.h"
+ #include "miscstruct.h"
+ #include "dixstruct.h"
+-#include "xf86xv.h"
+ #include <X11/extensions/Xv.h>
+ #include <xorg-config.h>
+ #ifdef XSERVER_PLATFORM_BUS
+@@ -1999,11 +1998,9 @@ ScreenInit(ScreenPtr pScreen, int argc, char **argv)
+ 
+ #ifdef GLAMOR_HAS_GBM
+     if (ms->drmmode.glamor) {
+-        XF86VideoAdaptorPtr     glamor_adaptor;
+-
+-        glamor_adaptor = ms->glamor.xv_init(pScreen, 16);
+-        if (glamor_adaptor != NULL)
+-            xf86XVScreenInit(pScreen, &glamor_adaptor, 1);
++        ms->adaptor = ms->glamor.xv_init(pScreen, 16);
++        if (ms->adaptor != NULL)
++            xf86XVScreenInit(pScreen, &ms->adaptor, 1);
+         else
+             xf86DrvMsg(pScrn->scrnIndex, X_ERROR,
+                        "Failed to initialize XV support.\n");
+@@ -2216,6 +2213,11 @@ CloseScreen(ScreenPtr pScreen)
+             PointPriv->spriteFuncs = ms->SpriteFuncs;        
+     }
+ 
++    if (ms->adaptor) {
++        free(ms->adaptor);
++        ms->adaptor = NULL;
++    }
++
+     if (pScrn->vtSema) {
+         LeaveVT(pScrn);
+     }
+diff --git a/hw/xfree86/drivers/modesetting/driver.h b/hw/xfree86/drivers/modesetting/driver.h
+index c4495c049..932d1b053 100644
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -32,6 +32,7 @@
+ #include <errno.h>
+ #include <drm.h>
+ #include <xf86drm.h>
++#include <xf86xv.h>
+ #include <xf86Crtc.h>
+ #include <damage.h>
+ #include <X11/extensions/dpmsconst.h>
+@@ -178,6 +179,8 @@ typedef struct _modesettingRec {
+         const char *(*egl_get_driver_name)(ScreenPtr);
+     } glamor;
+ #endif
++
++    XF86VideoAdaptorPtr adaptor;
+ } modesettingRec, *modesettingPtr;
+ 
+ #define glamor_finish(screen) ms->glamor.finish(screen)
+-- 
+2.38.5
+

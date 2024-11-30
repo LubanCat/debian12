@@ -1,0 +1,40 @@
+From 6bce29f293f94875996ff44ea1b1d5eff52eca20 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Mon, 18 Nov 2019 17:43:34 +0800
+Subject: [PATCH 1/2] desktop: Support outline mode in
+ paint_rubber_banding_rect
+
+Set env "PCMANFM_OUTLINE_MODE" to enable it.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ src/desktop.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/src/desktop.c b/src/desktop.c
+index 0686a59..2705088 100644
+--- a/src/desktop.c
++++ b/src/desktop.c
+@@ -35,6 +35,8 @@
+ #include <X11/Xatom.h>
+ #include <math.h>
+ 
++#include <stdlib.h>
++
+ #include <cairo-xlib.h>
+ 
+ #include "pref.h"
+@@ -2076,6 +2078,10 @@ static void paint_rubber_banding_rect(FmDesktop* self, cairo_t* cr, GdkRectangle
+     cairo_set_source_rgba(cr, (gdouble)clr.red/65535, (gdouble)clr.green/65536, (gdouble)clr.blue/65535, (gdouble)alpha/100);
+     gdk_cairo_rectangle(cr, &rect);
+     cairo_clip (cr);
++
++    // HACK: Outline mode
++    if (!getenv ("PCMANFM_OUTLINE_MODE"))
++
+     cairo_paint (cr);
+     gdk_cairo_set_source_color(cr, &clr);
+     cairo_rectangle (cr, rect.x + 0.5, rect.y + 0.5, rect.width - 1, rect.height - 1);
+-- 
+2.34.1
+

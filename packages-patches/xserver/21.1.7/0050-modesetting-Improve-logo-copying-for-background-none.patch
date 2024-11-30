@@ -1,0 +1,267 @@
+From baca2db9ef54d1a54a37d70fceb5c8dd0d8d249a Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Wed, 20 Oct 2021 17:58:25 +0800
+Subject: [PATCH 50/81] modesetting: Improve logo copying for -background none
+
+Tested with:
+cp /dev/urandom /dev/fb0
+X -background none
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c       |   3 +
+ .../drivers/modesetting/drmmode_display.c     | 180 +++++++++++-------
+ .../drivers/modesetting/drmmode_display.h     |   2 -
+ 3 files changed, 111 insertions(+), 74 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 7ef9fc0d4..221047f10 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1326,6 +1326,9 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+         ms->atomic_modeset = FALSE;
+     }
+ 
++    /* Try to enable atomic cap, but not doing atomic modeset */
++    drmSetClientCap(ms->fd, DRM_CLIENT_CAP_ATOMIC, 2);
++
+     drmSetClientCap(ms->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+ 
+     ms->kms_has_modifiers = FALSE;
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index f63da0bb0..8e61a2ee6 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -1557,59 +1557,124 @@ drmmode_crtc_dpms(xf86CrtcPtr crtc, int mode)
+     }
+ }
+ 
+-static PixmapPtr
+-create_pixmap_for_fbcon(drmmode_ptr drmmode, ScrnInfoPtr pScrn, int fbcon_id)
++static Bool
++drmmode_crtc_copy_fb(ScrnInfoPtr pScrn, drmmode_ptr drmmode,
++                     xf86CrtcPtr crtc)
+ {
+-    PixmapPtr pixmap = drmmode->fbcon_pixmap;
+-    drmModeFBPtr fbcon;
+     ScreenPtr pScreen = xf86ScrnToScreen(pScrn);
+-    modesettingPtr ms = modesettingPTR(pScrn);
++    PixmapPtr screen_pixmap = pScreen->GetScreenPixmap(pScreen);
++    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
++    drmmode_prop_info_rec *props_plane = drmmode_crtc->props_plane;
++    drmModeObjectProperties *props;
++    PixmapPtr src = NULL, dst;
++    drmModeFBPtr fbcon;
++    struct dumb_bo *bo;
++    GCPtr gc;
++    int src_x, src_y, src_w, src_h, crtc_x, crtc_y, crtc_w, crtc_h;
++    int fbcon_id, fb_width, fb_height, fb_pitch, fb_depth, fb_bpp;
+     Bool ret = FALSE;
+ 
+-    if (pixmap)
+-        return pixmap;
++    if (!drmmode_crtc->plane_id)
++        return FALSE;
+ 
+-    if (!drmmode->glamor && !drmmode->exa)
+-        return NULL;
++    if (!(fbcon_id = drmmode_crtc->mode_crtc->buffer_id))
++        return FALSE;
++
++    if (fbcon_id == drmmode->fb_id) {
++        /* in some rare case there might be no fbcon and we might already
++         * be the one with the current fb to avoid a false deadlck in
++         * kernel ttm code just do nothing as anyway there is nothing
++         * to do
++         */
++        return FALSE;
++    }
++
++    props = drmModeObjectGetProperties(drmmode->fd, drmmode_crtc->plane_id,
++                                       DRM_MODE_OBJECT_PLANE);
++    if (!props) {
++        xf86DrvMsg(drmmode->scrn->scrnIndex, X_ERROR,
++                   "couldn't get plane properties\n");
++        return FALSE;
++    }
++
++    src_x = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_SRC_X],
++                                   props, 0) >> 16;
++    src_y = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_SRC_Y],
++                                   props, 0) >> 16;
++    src_w = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_SRC_W],
++                                   props, 0) >> 16;
++    src_h = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_SRC_H],
++                                   props, 0) >> 16;
++    crtc_x = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_CRTC_X],
++                                    props, 0) + crtc->x;
++    crtc_y = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_CRTC_Y],
++                                    props, 0) + crtc->y;
++    crtc_w = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_CRTC_W],
++                                    props, 0);
++    crtc_h = drmmode_prop_get_value(&props_plane[DRMMODE_PLANE_CRTC_H],
++                                    props, 0);
++    drmModeFreeObjectProperties(props);
++
++    if (!src_w || !src_h || src_w != crtc_w || src_h != crtc_h ||
++        crtc_x + crtc_w > screen_pixmap->drawable.width ||
++        crtc_y + crtc_h > screen_pixmap->drawable.height)
++        return FALSE;
+ 
+     fbcon = drmModeGetFB(drmmode->fd, fbcon_id);
+-    if (fbcon == NULL)
+-        return NULL;
++    if (!fbcon)
++        return FALSE;
+ 
+-    if (fbcon->depth != pScrn->depth ||
+-        fbcon->width != pScrn->virtualX ||
+-        fbcon->height != pScrn->virtualY)
+-        goto out_free_fb;
++    fb_width = fbcon->width;
++    fb_height = fbcon->height;
++    fb_pitch = fbcon->pitch;
++    fb_depth = fbcon->depth;
++    fb_bpp = fbcon->bpp;
+ 
+-    pixmap = drmmode_create_pixmap_header(pScreen, fbcon->width,
+-                                          fbcon->height, fbcon->depth,
+-                                          fbcon->bpp, fbcon->pitch, NULL);
+-    if (!pixmap)
+-        goto out_free_fb;
++    bo = dumb_get_bo_from_handle(drmmode->fd, fbcon->handle, fbcon->pitch,
++                                 fbcon->pitch * fbcon->height);
++    drmModeFreeFB(fbcon);
++    if (!bo)
++        return FALSE;
+ 
+-    if (drmmode->exa) {
+-        struct dumb_bo *bo;
++    if (dumb_bo_map(drmmode->fd, bo) < 0)
++        goto out;
++
++    src = drmmode_create_pixmap_header(pScreen, fb_width,
++                                       fb_height, fb_depth,
++                                       fb_bpp, fb_pitch,
++                                       bo->ptr);
++    if (!src)
++        goto out;
+ 
+-        bo = dumb_get_bo_from_handle(drmmode->fd, fbcon->handle, fbcon->pitch,
+-                                     fbcon->pitch * fbcon->height);
+-        if (bo)
+-            ret = ms_exa_set_pixmap_bo(pScrn, pixmap, bo, TRUE);
++    if (drmmode->exa) {
++        if (!ms_exa_set_pixmap_bo(pScrn, src, bo, FALSE))
++            goto out;
++    }
+ #ifdef GLAMOR_HAS_GBM
+-    } else if (!drmmode->glamor) {
+-	ret = ms->glamor.egl_create_textured_pixmap(pixmap, fbcon->handle,
+-						    fbcon->pitch);
+-#endif
++    else if (drmmode->glamor) {
++        modesettingPtr ms = modesettingPTR(pScrn);
++        if (!ms->glamor.egl_create_textured_pixmap(src, bo->handle, bo->pitch))
++            goto out;
+     }
++#endif
+ 
+-    if (!ret) {
+-      FreePixmap(pixmap);
+-      pixmap = NULL;
+-    }
++    dst = pScreen->GetScreenPixmap(pScreen);
+ 
+-    drmmode->fbcon_pixmap = pixmap;
+-out_free_fb:
+-    drmModeFreeFB(fbcon);
+-    return pixmap;
++    gc = GetScratchGC(pScrn->depth, pScreen);
++    ValidateGC(&dst->drawable, gc);
++
++    (*gc->ops->CopyArea)(&src->drawable, &dst->drawable, gc, src_x, src_y,
++                         src_w, src_h, crtc_x, crtc_y);
++
++    FreeScratchGC(gc);
++    ret = TRUE;
++
++out:
++    if (src)
++        pScreen->DestroyPixmap(src);
++    if (bo)
++        dumb_bo_destroy(drmmode->fd, bo);
++    return ret;
+ }
+ 
+ void
+@@ -1617,48 +1682,19 @@ drmmode_copy_fb(ScrnInfoPtr pScrn, drmmode_ptr drmmode)
+ {
+     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(pScrn);
+     ScreenPtr pScreen = xf86ScrnToScreen(pScrn);
+-    PixmapPtr src, dst;
+-    int fbcon_id = 0;
+-    GCPtr gc;
++    Bool ret = FALSE;
+     int i;
+ 
+-    for (i = 0; i < xf86_config->num_crtc; i++) {
+-        drmmode_crtc_private_ptr drmmode_crtc = xf86_config->crtc[i]->driver_private;
+-        if (drmmode_crtc->mode_crtc->buffer_id)
+-            fbcon_id = drmmode_crtc->mode_crtc->buffer_id;
+-    }
+-
+-    if (!fbcon_id)
++    if (getenv("XSERVER_NO_BG_NONE"))
+         return;
+ 
+-    if (fbcon_id == drmmode->fb_id) {
+-        /* in some rare case there might be no fbcon and we might already
+-         * be the one with the current fb to avoid a false deadlck in
+-         * kernel ttm code just do nothing as anyway there is nothing
+-         * to do
+-         */
+-        return;
+-    }
++    for (i = 0; i < xf86_config->num_crtc; i++)
++        ret |= drmmode_crtc_copy_fb(pScrn, drmmode, xf86_config->crtc[i]);
+ 
+-    src = create_pixmap_for_fbcon(drmmode, pScrn, fbcon_id);
+-    if (!src)
++    if (!ret)
+         return;
+ 
+-    dst = pScreen->GetScreenPixmap(pScreen);
+-
+-    gc = GetScratchGC(pScrn->depth, pScreen);
+-    ValidateGC(&dst->drawable, gc);
+-
+-    (*gc->ops->CopyArea)(&src->drawable, &dst->drawable, gc, 0, 0,
+-                         pScrn->virtualX, pScrn->virtualY, 0, 0);
+-
+-    FreeScratchGC(gc);
+-
+     pScreen->canDoBGNoneRoot = TRUE;
+-
+-    if (drmmode->fbcon_pixmap)
+-        pScrn->pScreen->DestroyPixmap(drmmode->fbcon_pixmap);
+-    drmmode->fbcon_pixmap = NULL;
+ }
+ 
+ static Bool
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.h b/hw/xfree86/drivers/modesetting/drmmode_display.h
+index b6f66850d..707b36ffd 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.h
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.h
+@@ -147,8 +147,6 @@ typedef struct {
+ 
+     Bool is_secondary;
+ 
+-    PixmapPtr fbcon_pixmap;
+-
+     const char *dri2_device_name;
+ 
+ #ifdef DRI3
+-- 
+2.38.5
+

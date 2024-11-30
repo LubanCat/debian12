@@ -1,0 +1,39 @@
+From e4422befbc2c31465d6bc2dd2fc9ec5c2fd31a45 Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?Jonas=20=C3=85dahl?= <jadahl@gmail.com>
+Date: Tue, 14 May 2024 14:34:52 +0200
+Subject: [PATCH 91/92] terminal: Avoid too large character grid when resized
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+When resizing the terminal, the row/columns would end up potentially too tall
+and/or wide, meaning the widget would grow each time the window was configured
+with a size.
+
+Fix this by making sure the calculated rows and columns don't loose too much
+precision, and if they do, shrink instead of grow, as that is expected by the
+xdg_toplevel configure event.
+
+Signed-off-by: Jonas Ådahl <jadahl@gmail.com>
+---
+ clients/terminal.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/clients/terminal.c b/clients/terminal.c
+index b7537aad..baac4514 100644
+--- a/clients/terminal.c
++++ b/clients/terminal.c
+@@ -868,8 +868,8 @@ resize_handler(struct widget *widget,
+ 		terminal->pace_pipe = -1;
+ 	}
+ 	m = 2 * terminal->margin;
+-	columns = (width - m) / (int32_t) terminal->average_width;
+-	rows = (height - m) / (int32_t) terminal->extents.height;
++	columns = (int32_t) round((width - m) / terminal->average_width);
++	rows = (int32_t) round((height - m) / terminal->extents.height);
+ 
+ 	if (!window_is_fullscreen(terminal->window) &&
+ 	    !window_is_maximized(terminal->window)) {
+-- 
+2.34.1
+

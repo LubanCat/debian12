@@ -1,0 +1,43 @@
+From 688fb1149193f8861c537c38bc307b7a45306c57 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:47:33 +0800
+Subject: [PATCH 22/81] xf86Rotate: Fix memory leak of rotation_damage
+
+There's a chance the rotation_damage hasn't registered when
+CloseScreen().
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/modes/xf86Rotate.c | 16 ++++++++++++++--
+ 1 file changed, 14 insertions(+), 2 deletions(-)
+
+diff --git a/hw/xfree86/modes/xf86Rotate.c b/hw/xfree86/modes/xf86Rotate.c
+index ea9c43c0f..e191a4e9e 100644
+--- a/hw/xfree86/modes/xf86Rotate.c
++++ b/hw/xfree86/modes/xf86Rotate.c
+@@ -298,8 +298,20 @@ xf86RotateCloseScreen(ScreenPtr screen)
+     xf86CrtcConfigPtr xf86_config = XF86_CRTC_CONFIG_PTR(scrn);
+     int c;
+ 
+-    /* This has already been destroyed when the root window was destroyed */
+-    xf86_config->rotation_damage = NULL;
++    if (xf86_config->rotation_damage) {
++        if (xf86_config->rotation_damage_registered) {
++            /*
++             * This has already been destroyed when the root window
++             * was destroyed
++             */
++            xf86_config->rotation_damage_registered = FALSE;
++        } else {
++            /* Free damage structure */
++            DamageDestroy(xf86_config->rotation_damage);
++        }
++        xf86_config->rotation_damage = NULL;
++    }
++
+     for (c = 0; c < xf86_config->num_crtc; c++)
+         xf86RotateDestroy(xf86_config->crtc[c]);
+ }
+-- 
+2.38.5
+

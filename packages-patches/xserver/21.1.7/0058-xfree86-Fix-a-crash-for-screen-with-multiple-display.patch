@@ -1,0 +1,51 @@
+From 3ce5d5b164768c9dbd30c91a429f5883a2480b1f Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 22 Feb 2022 10:49:03 +0800
+Subject: [PATCH 58/81] xfree86: Fix a crash for screen with multiple displays
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/common/xf86Config.c | 4 +++-
+ hw/xfree86/common/xf86Helper.c | 8 ++++++++
+ 2 files changed, 11 insertions(+), 1 deletion(-)
+
+diff --git a/hw/xfree86/common/xf86Config.c b/hw/xfree86/common/xf86Config.c
+index 5d814c148..984ca4bd8 100644
+--- a/hw/xfree86/common/xf86Config.c
++++ b/hw/xfree86/common/xf86Config.c
+@@ -1794,7 +1794,9 @@ configScreen(confScreenPtr screenp, XF86ConfScreenPtr conf_screen, int scrnum,
+         count++;
+         dispptr = (XF86ConfDisplayPtr) dispptr->list.next;
+     }
+-    screenp->displays = xnfallocarray(count, sizeof(DispPtr));
++
++    /* HACK: Pre-alloc a large displays array to avoid later realloc */
++    screenp->displays = xnfallocarray(32, sizeof(DispPtr));
+     screenp->numdisplays = count;
+ 
+     for (count = 0, dispptr = conf_screen->scrn_display_lst;
+diff --git a/hw/xfree86/common/xf86Helper.c b/hw/xfree86/common/xf86Helper.c
+index 0389945a7..f48f6c634 100644
+--- a/hw/xfree86/common/xf86Helper.c
++++ b/hw/xfree86/common/xf86Helper.c
+@@ -555,9 +555,17 @@ xf86SetDepthBpp(ScrnInfoPtr scrp, int depth, int dummy, int fbbpp,
+      */
+     if (i == scrp->confScreen->numdisplays) {
+         scrp->confScreen->numdisplays++;
++
++	/**
++	 * HACK: Realloc would free the old displays and damage other
++	 * scrp's display.
++	 */
++#if 0
+         scrp->confScreen->displays =
+             xnfreallocarray(scrp->confScreen->displays,
+                             scrp->confScreen->numdisplays, sizeof(DispPtr));
++#endif
++
+         xf86DrvMsg(scrp->scrnIndex, X_INFO,
+                    "Creating default Display subsection in Screen section\n"
+                    "\t\"%s\" for depth/fbbpp %d/%d\n",
+-- 
+2.38.5
+

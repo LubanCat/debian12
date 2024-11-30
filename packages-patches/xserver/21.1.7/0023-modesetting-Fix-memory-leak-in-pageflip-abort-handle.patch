@@ -1,0 +1,32 @@
+From 273877d236cad716a6413f5eb7f1486e77e6f627 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:18:09 +0800
+Subject: [PATCH 23/81] modesetting: Fix memory leak in pageflip abort handler
+
+Add missing old fb removal in pageflip abort handler.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/pageflip.c | 4 +++-
+ 1 file changed, 3 insertions(+), 1 deletion(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/pageflip.c b/hw/xfree86/drivers/modesetting/pageflip.c
+index 97f9fc918..a61cc1f68 100644
+--- a/hw/xfree86/drivers/modesetting/pageflip.c
++++ b/hw/xfree86/drivers/modesetting/pageflip.c
+@@ -156,9 +156,11 @@ ms_pageflip_abort(void *data)
+     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+     modesettingPtr ms = modesettingPTR(scrn);
+ 
+-    if (flipdata->flip_count == 1)
++    if (flipdata->flip_count == 1) {
+         flipdata->abort_handler(ms, flipdata->event);
+ 
++        drmModeRmFB(ms->fd, flipdata->old_fb_id);
++    }
+     ms_pageflip_free(flip);
+ }
+ 
+-- 
+2.38.5
+

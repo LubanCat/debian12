@@ -1,0 +1,30 @@
+From d719ba2d2ae3442ce7a20fa9120591ded216aa0f Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 5 Jul 2022 16:19:59 +0800
+Subject: [PATCH 63/81] modesetting: Force disabling atomic APIs
+
+The atomic has been block-listed in kernel newer than 4.4, let's disable
+it here for the older kernel as well.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 3 +++
+ 1 file changed, 3 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 4d8e4da2c..270b75896 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1326,6 +1326,9 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+         ms->atomic_modeset = FALSE;
+     }
+ 
++    /* HACK: Force disabling atomic APIs */
++    ms->atomic_modeset = 0;
++
+     /* Try to enable atomic cap, but not doing atomic modeset */
+     drmSetClientCap(ms->fd, DRM_CLIENT_CAP_ATOMIC, 2);
+ 
+-- 
+2.38.5
+

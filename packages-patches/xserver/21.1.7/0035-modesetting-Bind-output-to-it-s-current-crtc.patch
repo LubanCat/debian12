@@ -1,0 +1,103 @@
+From 9f0844538397a4326f3fe281929e4e825a7bde93 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 20 Sep 2019 18:49:09 +0800
+Subject: [PATCH 35/81] modesetting: Bind output to it's current crtc
+
+Prefer assigning the output to it's current crtc instead of using the
+first possible one.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c       |  1 +
+ hw/xfree86/drivers/modesetting/driver.h       |  1 +
+ .../drivers/modesetting/drmmode_display.c     | 42 +++++++++++++------
+ 3 files changed, 32 insertions(+), 12 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index df269e638..1501e5043 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -158,6 +158,7 @@ static const OptionInfoRec Options[] = {
+     {OPTION_ASYNC_FLIP_SECONDARIES, "AsyncFlipSecondaries", OPTV_BOOLEAN, {0}, FALSE},
+     {OPTION_FLIP_FB, "FlipFB", OPTV_STRING, {0}, FALSE},
+     {OPTION_FLIP_FB_RATE, "MaxFlipRate", OPTV_INTEGER, {0}, 0},
++    {OPTION_BIND_CURRENT, "BindCurrent", OPTV_BOOLEAN, {0}, FALSE},
+     {-1, NULL, OPTV_NONE, {0}, FALSE}
+ };
+ 
+diff --git a/hw/xfree86/drivers/modesetting/driver.h b/hw/xfree86/drivers/modesetting/driver.h
+index e06801638..23864ec74 100644
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -64,6 +64,7 @@ typedef enum {
+     OPTION_ASYNC_FLIP_SECONDARIES,
+     OPTION_FLIP_FB,
+     OPTION_FLIP_FB_RATE,
++    OPTION_BIND_CURRENT,
+ } modesettingOpts;
+ 
+ typedef struct
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index af9af22e8..eb1258d45 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -3295,6 +3295,9 @@ drmmode_output_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, drmModeResPtr mode_r
+         [DRMMODE_CONNECTOR_CRTC_ID] = { .name = "CRTC_ID", },
+     };
+ 
++    drmmode_prop_info_ptr crtc_info;
++    unsigned int current_crtc;
++
+     koutput =
+         drmModeGetConnector(drmmode->fd, mode_res->connectors[num]);
+     if (!koutput)
+@@ -3382,19 +3385,34 @@ drmmode_output_init(ScrnInfoPtr pScrn, drmmode_ptr drmmode, drmModeResPtr mode_r
+     /* work out the possible clones later */
+     output->possible_clones = 0;
+ 
+-    if (ms->atomic_modeset) {
+-        if (!drmmode_prop_info_copy(drmmode_output->props_connector,
+-                                    connector_props, DRMMODE_CONNECTOR__COUNT,
+-                                    0)) {
+-            goto out_free_encoders;
++    if (!drmmode_prop_info_copy(drmmode_output->props_connector,
++                                connector_props, DRMMODE_CONNECTOR__COUNT,
++                                0)) {
++        goto out_free_encoders;
++    }
++    props = drmModeObjectGetProperties(drmmode->fd,
++                                       drmmode_output->output_id,
++                                       DRM_MODE_OBJECT_CONNECTOR);
++    drmmode_prop_info_update(drmmode, drmmode_output->props_connector,
++                             DRMMODE_CONNECTOR__COUNT, props);
++    crtc_info = &drmmode_output->props_connector[DRMMODE_CONNECTOR_CRTC_ID];
++    current_crtc = drmmode_prop_get_value(crtc_info, props,
++                                          DRMMODE_PLANE_TYPE__COUNT);
++    drmModeFreeObjectProperties(props);
++
++    if (xf86ReturnOptValBool(drmmode->Options, OPTION_BIND_CURRENT, TRUE)) {
++        for (i = 0; i < mode_res->count_crtcs; i++) {
++            if (current_crtc == mode_res->crtcs[i]) {
++                xf86DrvMsgVerb(pScrn->scrnIndex, X_INFO, 0,
++                               "Bind output %d to current crtc %d.\n",
++                               drmmode_output->output_id, current_crtc);
++                output->possible_crtcs = (1 << i) >> crtcshift;
++                break;
++            }
+         }
+-        props = drmModeObjectGetProperties(drmmode->fd,
+-                                           drmmode_output->output_id,
+-                                           DRM_MODE_OBJECT_CONNECTOR);
+-        drmmode_prop_info_update(drmmode, drmmode_output->props_connector,
+-                                 DRMMODE_CONNECTOR__COUNT, props);
+-        drmModeFreeObjectProperties(props);
+-    } else {
++    }
++
++    if (!ms->atomic_modeset) {
+         drmmode_output->dpms_enum_id =
+             koutput_get_prop_id(drmmode->fd, koutput, DRM_MODE_PROP_ENUM,
+                                 "DPMS");
+-- 
+2.38.5
+

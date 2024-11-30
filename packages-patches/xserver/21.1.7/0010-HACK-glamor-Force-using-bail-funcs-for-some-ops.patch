@@ -1,0 +1,245 @@
+From 1baabd7db3ab510325ca7384261e9161d77368f5 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 26 Jul 2019 15:55:38 +0800
+Subject: [PATCH 10/81] HACK: glamor: Force using bail funcs for some ops
+
+Not all ops would benefit from glamor gl funcs.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor_copy.c     |  4 +++-
+ glamor/glamor_core.c     | 27 +++++++++++++++++++++++++++
+ glamor/glamor_glyphblt.c |  6 ++++--
+ glamor/glamor_image.c    |  6 ++++--
+ glamor/glamor_lines.c    |  3 ++-
+ glamor/glamor_points.c   |  3 ++-
+ glamor/glamor_priv.h     |  4 ++++
+ glamor/glamor_rects.c    |  3 ++-
+ glamor/glamor_render.c   |  3 +++
+ glamor/glamor_segs.c     |  3 ++-
+ glamor/glamor_spans.c    |  9 ++++++---
+ 11 files changed, 59 insertions(+), 12 deletions(-)
+
+diff --git a/glamor/glamor_copy.c b/glamor/glamor_copy.c
+index 2a8f2d465..b5486fe30 100644
+--- a/glamor/glamor_copy.c
++++ b/glamor/glamor_copy.c
+@@ -746,7 +746,9 @@ glamor_copy(DrawablePtr src,
+     if (nbox == 0)
+ 	return;
+ 
+-    if (glamor_copy_gl(src, dst, gc, box, nbox, dx, dy, reverse, upsidedown, bitplane, closure))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_copy_gl(src, dst, gc, box, nbox, dx, dy, reverse,
++                       upsidedown, bitplane, closure))
+         return;
+     glamor_copy_bail(src, dst, gc, box, nbox, dx, dy, reverse, upsidedown, bitplane, closure);
+ }
+diff --git a/glamor/glamor_core.c b/glamor/glamor_core.c
+index cb315e2d1..4f71feaac 100644
+--- a/glamor/glamor_core.c
++++ b/glamor/glamor_core.c
+@@ -110,6 +110,33 @@ glamor_link_glsl_prog(ScreenPtr screen, GLint prog, const char *format, ...)
+     }
+ }
+ 
++#ifdef GLAMOR_HAS_GBM_MAP
++Bool
++glamor_prefer_gl(const char *func) {
++    if (!strcmp(func, "glamor_copy") ||
++        !strcmp(func, "glamor_composite") ||
++        !strcmp(func, "glamor_put_image") ||
++        !strcmp(func, "glamor_get_image") ||
++        !strcmp(func, "glamor_poly_segment") ||
++        !strcmp(func, "glamor_push_pixels") ||
++        !strcmp(func, "glamor_poly_fill_rect") ||
++        !strcmp(func, "glamor_poly_glyph_blt"))
++        return TRUE;
++
++    /*
++    if (!strcmp(func, "glamor_poly_lines") ||
++       !strcmp(func, "glamor_poly_point") ||
++       !strcmp(func, "glamor_fill_spans") ||
++       !strcmp(func, "glamor_get_spans") ||
++       !strcmp(func, "glamor_set_spans"))
++        return FALSE;
++        */
++
++    return FALSE;
++}
++#else
++Bool glamor_prefer_gl(const char *func) { return TRUE; }
++#endif
+ 
+ static GCOps glamor_gc_ops = {
+     .FillSpans = glamor_fill_spans,
+diff --git a/glamor/glamor_glyphblt.c b/glamor/glamor_glyphblt.c
+index 6537c66e9..7207df238 100644
+--- a/glamor/glamor_glyphblt.c
++++ b/glamor/glamor_glyphblt.c
+@@ -155,7 +155,8 @@ glamor_poly_glyph_blt(DrawablePtr drawable, GCPtr gc,
+                       int start_x, int y, unsigned int nglyph,
+                       CharInfoPtr *ppci, void *pglyph_base)
+ {
+-    if (glamor_poly_glyph_blt_gl(drawable, gc, start_x, y, nglyph, ppci,
++    if (GLAMOR_PREFER_GL() &&
++        glamor_poly_glyph_blt_gl(drawable, gc, start_x, y, nglyph, ppci,
+                                  pglyph_base))
+         return;
+     miPolyGlyphBlt(drawable, gc, start_x, y, nglyph,
+@@ -248,7 +249,8 @@ void
+ glamor_push_pixels(GCPtr pGC, PixmapPtr pBitmap,
+                    DrawablePtr pDrawable, int w, int h, int x, int y)
+ {
+-    if (glamor_push_pixels_gl(pGC, pBitmap, pDrawable, w, h, x, y))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_push_pixels_gl(pGC, pBitmap, pDrawable, w, h, x, y))
+         return;
+ 
+     miPushPixels(pGC, pBitmap, pDrawable, w, h, x, y);
+diff --git a/glamor/glamor_image.c b/glamor/glamor_image.c
+index 7342f6390..48484751b 100644
+--- a/glamor/glamor_image.c
++++ b/glamor/glamor_image.c
+@@ -100,7 +100,8 @@ void
+ glamor_put_image(DrawablePtr drawable, GCPtr gc, int depth, int x, int y,
+                  int w, int h, int leftPad, int format, char *bits)
+ {
+-    if (glamor_put_image_gl(drawable, gc, depth, x, y, w, h, leftPad, format, bits))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_put_image_gl(drawable, gc, depth, x, y, w, h, leftPad, format, bits))
+         return;
+     glamor_put_image_bail(drawable, gc, depth, x, y, w, h, leftPad, format, bits);
+ }
+@@ -159,7 +160,8 @@ void
+ glamor_get_image(DrawablePtr drawable, int x, int y, int w, int h,
+                  unsigned int format, unsigned long plane_mask, char *d)
+ {
+-    if (glamor_get_image_gl(drawable, x, y, w, h, format, plane_mask, d))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_get_image_gl(drawable, x, y, w, h, format, plane_mask, d))
+         return;
+     glamor_get_image_bail(drawable, x, y, w, h, format, plane_mask, d);
+ }
+diff --git a/glamor/glamor_lines.c b/glamor/glamor_lines.c
+index 0683cd800..2f54aa1e2 100644
+--- a/glamor/glamor_lines.c
++++ b/glamor/glamor_lines.c
+@@ -165,7 +165,8 @@ void
+ glamor_poly_lines(DrawablePtr drawable, GCPtr gc,
+                   int mode, int n, DDXPointPtr points)
+ {
+-    if (glamor_poly_lines_gl(drawable, gc, mode, n, points))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_poly_lines_gl(drawable, gc, mode, n, points))
+         return;
+     glamor_poly_lines_bail(drawable, gc, mode, n, points);
+ }
+diff --git a/glamor/glamor_points.c b/glamor/glamor_points.c
+index c6bd5780f..7c14fbe26 100644
+--- a/glamor/glamor_points.c
++++ b/glamor/glamor_points.c
+@@ -120,7 +120,8 @@ void
+ glamor_poly_point(DrawablePtr drawable, GCPtr gc, int mode, int npt,
+                   DDXPointPtr ppt)
+ {
+-    if (glamor_poly_point_gl(drawable, gc, mode, npt, ppt))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_poly_point_gl(drawable, gc, mode, npt, ppt))
+         return;
+     miPolyPoint(drawable, gc, mode, npt, ppt);
+ }
+diff --git a/glamor/glamor_priv.h b/glamor/glamor_priv.h
+index 0377fba0a..7b144f01c 100644
+--- a/glamor/glamor_priv.h
++++ b/glamor/glamor_priv.h
+@@ -883,6 +883,10 @@ void
+ glamor_solid_boxes(PixmapPtr pixmap,
+                    BoxPtr box, int nbox, unsigned long fg_pixel);
+ 
++Bool
++glamor_prefer_gl(const char *func);
++
++#define GLAMOR_PREFER_GL() glamor_prefer_gl(__func__)
+ 
+ /* glamor_xv */
+ typedef struct {
+diff --git a/glamor/glamor_rects.c b/glamor/glamor_rects.c
+index 9a95ebc5b..c9e521ab8 100644
+--- a/glamor/glamor_rects.c
++++ b/glamor/glamor_rects.c
+@@ -193,7 +193,8 @@ void
+ glamor_poly_fill_rect(DrawablePtr drawable,
+                       GCPtr gc, int nrect, xRectangle *prect)
+ {
+-    if (glamor_poly_fill_rect_gl(drawable, gc, nrect, prect))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_poly_fill_rect_gl(drawable, gc, nrect, prect))
+         return;
+     glamor_poly_fill_rect_bail(drawable, gc, nrect, prect);
+ }
+diff --git a/glamor/glamor_render.c b/glamor/glamor_render.c
+index 8776fd74c..ac6aab1d2 100644
+--- a/glamor/glamor_render.c
++++ b/glamor/glamor_render.c
+@@ -1620,6 +1620,9 @@ glamor_composite(CARD8 op,
+     int nbox, ok = FALSE;
+     int force_clip = 0;
+ 
++    if (!GLAMOR_PREFER_GL())
++        goto fail;
++
+     if (source->pDrawable) {
+         source_pixmap = glamor_get_drawable_pixmap(source->pDrawable);
+         if (glamor_pixmap_drm_only(source_pixmap))
+diff --git a/glamor/glamor_segs.c b/glamor/glamor_segs.c
+index daf4bf79a..380313ac8 100644
+--- a/glamor/glamor_segs.c
++++ b/glamor/glamor_segs.c
+@@ -165,7 +165,8 @@ void
+ glamor_poly_segment(DrawablePtr drawable, GCPtr gc,
+                     int nseg, xSegment *segs)
+ {
+-    if (glamor_poly_segment_gl(drawable, gc, nseg, segs))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_poly_segment_gl(drawable, gc, nseg, segs))
+         return;
+ 
+     glamor_poly_segment_bail(drawable, gc, nseg, segs);
+diff --git a/glamor/glamor_spans.c b/glamor/glamor_spans.c
+index 551d2fe5b..a91468675 100644
+--- a/glamor/glamor_spans.c
++++ b/glamor/glamor_spans.c
+@@ -173,7 +173,8 @@ glamor_fill_spans(DrawablePtr drawable,
+                   GCPtr gc,
+                   int n, DDXPointPtr points, int *widths, int sorted)
+ {
+-    if (glamor_fill_spans_gl(drawable, gc, n, points, widths, sorted))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_fill_spans_gl(drawable, gc, n, points, widths, sorted))
+         return;
+     glamor_fill_spans_bail(drawable, gc, n, points, widths, sorted);
+ }
+@@ -256,7 +257,8 @@ void
+ glamor_get_spans(DrawablePtr drawable, int wmax,
+                  DDXPointPtr points, int *widths, int count, char *dst)
+ {
+-    if (glamor_get_spans_gl(drawable, wmax, points, widths, count, dst))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_get_spans_gl(drawable, wmax, points, widths, count, dst))
+         return;
+     glamor_get_spans_bail(drawable, wmax, points, widths, count, dst);
+ }
+@@ -375,7 +377,8 @@ void
+ glamor_set_spans(DrawablePtr drawable, GCPtr gc, char *src,
+                  DDXPointPtr points, int *widths, int numPoints, int sorted)
+ {
+-    if (glamor_set_spans_gl(drawable, gc, src, points, widths, numPoints, sorted))
++    if (GLAMOR_PREFER_GL() &&
++        glamor_set_spans_gl(drawable, gc, src, points, widths, numPoints, sorted))
+         return;
+     glamor_set_spans_bail(drawable, gc, src, points, widths, numPoints, sorted);
+ }
+-- 
+2.38.5
+

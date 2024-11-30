@@ -1,0 +1,40 @@
+From 823597c01d3b79b768ef41be7e1e43bdd5832a96 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 9 Aug 2022 19:21:50 +0800
+Subject: [PATCH 67/81] configure.ac: Fix gbm function check errors
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ configure.ac | 8 ++++++--
+ 1 file changed, 6 insertions(+), 2 deletions(-)
+
+diff --git a/configure.ac b/configure.ac
+index 6121e4b7c..249870097 100644
+--- a/configure.ac
++++ b/configure.ac
+@@ -2062,7 +2062,8 @@ if test "x$GLAMOR" = xyes; then
+ 				 [AC_DEFINE(GBM_BO_WITH_MODIFIERS, 1, [Have gbm_bo_create_with_modifiers])],
+ 				 [])
+ 		AC_CHECK_HEADER([gbm.h],
+-			[AC_CHECK_LIB(gbm, gbm_bo_map,
++			[LDFLAGS="$LDFLAGS $GBM_LIBS"
++			 AC_CHECK_LIB(gbm, gbm_bo_map,
+ 				[AC_DEFINE(GLAMOR_HAS_GBM_MAP,1,[Have gbm_bo_map])])])
+ 	else
+ 		if test "x$XORG" = xyes; then
+@@ -2070,8 +2071,11 @@ if test "x$GLAMOR" = xyes; then
+ 		fi
+ 	fi
+ 
++	PKG_CHECK_MODULES(EGL, "$LIBEGL")
++
+ 	AC_CHECK_HEADER([GLES3/gl3.h],
+-		[AC_CHECK_LIB(GLESv2, glFenceSync,
++		[LDFLAGS="$LDFLAGS $EGL_LIBS"
++		 AC_CHECK_LIB(GLESv2, glFenceSync,
+ 			[AC_DEFINE(GLAMOR_HAS_GL_FENCE,1,[Have glFenceSync])])])
+ fi
+ AM_CONDITIONAL([GLAMOR_EGL], [test "x$GBM" = xyes])
+-- 
+2.38.5
+

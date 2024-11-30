@@ -1,0 +1,193 @@
+From 8e6d446788bf283ba504990b770e64a7c01197fa Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 9 Aug 2022 18:19:09 +0800
+Subject: [PATCH 65/81] modesetting: Indirect the exa API through LoaderSymbol
+
+Prerequisite for building all of xserver with -z now.
+
+Gitlab: https://gitlab.freedesktop.org/xorg/xserver/issues/692
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c |  9 ++++++-
+ hw/xfree86/drivers/modesetting/driver.h |  8 ++++++
+ hw/xfree86/drivers/modesetting/exa.c    | 36 ++++++++++++++++---------
+ 3 files changed, 39 insertions(+), 14 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 270b75896..74a023999 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -970,9 +970,16 @@ static void
+ try_enable_exa(ScrnInfoPtr pScrn)
+ {
+     modesettingPtr ms = modesettingPTR(pScrn);
++    void *mod = xf86LoadSubModule(pScrn, "exa");
++    if (mod) {
++        ms->exa.Alloc = LoaderSymbolFromModule(mod, "exaDriverAlloc");
++        ms->exa.Init = LoaderSymbolFromModule(mod, "exaDriverInit");
++        ms->exa.Fini = LoaderSymbolFromModule(mod, "exaDriverFini");
++        ms->exa.GetPrivate =
++            LoaderSymbolFromModule(mod, "exaGetPixmapDriverPrivate");
+ 
+-    if (xf86LoadSubModule(pScrn, "exa"))
+         ms_init_exa(pScrn);
++    }
+ 
+     if (ms->drmmode.exa)
+         xf86DrvMsg(pScrn->scrnIndex, X_INFO, "exa initialized\n");
+diff --git a/hw/xfree86/drivers/modesetting/driver.h b/hw/xfree86/drivers/modesetting/driver.h
+index 4816031ee..2aea31023 100644
+--- a/hw/xfree86/drivers/modesetting/driver.h
++++ b/hw/xfree86/drivers/modesetting/driver.h
+@@ -183,6 +183,14 @@ typedef struct _modesettingRec {
+     } glamor;
+ #endif
+ 
++    /* exa API */
++    struct {
++        ExaDriverPtr (*Alloc)(void);
++        Bool (*Init)(ScreenPtr, ExaDriverPtr);
++        void (*Fini)(ScreenPtr);
++        void *(*GetPrivate)(PixmapPtr);
++    } exa;
++
+     XF86VideoAdaptorPtr adaptor;
+ } modesettingRec, *modesettingPtr;
+ 
+diff --git a/hw/xfree86/drivers/modesetting/exa.c b/hw/xfree86/drivers/modesetting/exa.c
+index 32e067791..28c225542 100644
+--- a/hw/xfree86/drivers/modesetting/exa.c
++++ b/hw/xfree86/drivers/modesetting/exa.c
+@@ -75,6 +75,16 @@ typedef struct {
+     ms_exa_prepare_args prepare_args;
+ } ms_exa_ctx;
+ 
++static ms_exa_pixmap_priv *
++ms_exa_get_private(PixmapPtr pPixmap)
++{
++    ScreenPtr screen = pPixmap->drawable.pScreen;
++    ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
++    modesettingPtr ms = modesettingPTR(scrn);
++
++    return ms->exa.GetPrivate(pPixmap);
++}
++
+ #ifdef MODESETTING_WITH_RGA
+ 
+ static inline RgaSURF_FORMAT
+@@ -104,7 +114,7 @@ static Bool
+ rga_prepare_info(PixmapPtr pPixmap, rga_info_t *info,
+                  int x, int y, int w, int h)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPixmap);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPixmap);
+     RgaSURF_FORMAT format;
+     int pitch, wstride, hstride;
+ 
+@@ -148,7 +158,7 @@ rga_prepare_info(PixmapPtr pPixmap, rga_info_t *info,
+ static Bool
+ rga_check_pixmap(PixmapPtr pPixmap)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPixmap);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPixmap);
+     RgaSURF_FORMAT format;
+ 
+     /* rga requires image width/height larger than 2 */
+@@ -176,7 +186,7 @@ ms_exa_prepare_access(PixmapPtr pPix, int index)
+     ScreenPtr screen = pPix->drawable.pScreen;
+     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+     modesettingPtr ms = modesettingPTR(scrn);
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPix);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPix);
+ 
+     if (pPix->devPrivate.ptr)
+         return TRUE;
+@@ -199,7 +209,7 @@ ms_exa_prepare_access(PixmapPtr pPix, int index)
+ void
+ ms_exa_finish_access(PixmapPtr pPix, int index)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPix);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPix);
+ 
+     if (priv && priv->bo)
+         pPix->devPrivate.ptr = NULL;
+@@ -917,7 +927,7 @@ fail:
+ static Bool
+ ms_exa_pixmap_is_offscreen(PixmapPtr pPixmap)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPixmap);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPixmap);
+ 
+     return priv && priv->bo;
+ }
+@@ -926,7 +936,7 @@ Bool
+ ms_exa_set_pixmap_bo(ScrnInfoPtr scrn, PixmapPtr pPixmap,
+                      struct dumb_bo *bo, Bool owned)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pPixmap);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pPixmap);
+     modesettingPtr ms = modesettingPTR(scrn);
+ 
+     if (!ms->drmmode.exa || !priv)
+@@ -953,9 +963,9 @@ ms_exa_set_pixmap_bo(ScrnInfoPtr scrn, PixmapPtr pPixmap,
+ struct dumb_bo *
+ ms_exa_bo_from_pixmap(ScreenPtr screen, PixmapPtr pixmap)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pixmap);
+     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+     modesettingPtr ms = modesettingPTR(scrn);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pixmap);
+ 
+     if (!ms->drmmode.exa || !priv)
+         return NULL;
+@@ -966,8 +976,8 @@ ms_exa_bo_from_pixmap(ScreenPtr screen, PixmapPtr pixmap)
+ void
+ ms_exa_exchange_buffers(PixmapPtr front, PixmapPtr back)
+ {
+-    ms_exa_pixmap_priv *front_priv = exaGetPixmapDriverPrivate(front);
+-    ms_exa_pixmap_priv *back_priv = exaGetPixmapDriverPrivate(back);
++    ms_exa_pixmap_priv *front_priv = ms_exa_get_private(front);
++    ms_exa_pixmap_priv *back_priv = ms_exa_get_private(back);
+     ms_exa_pixmap_priv tmp_priv;
+ 
+     tmp_priv = *front_priv;
+@@ -1009,9 +1019,9 @@ ms_exa_shareable_fd_from_pixmap(ScreenPtr screen,
+                                 CARD16 *stride,
+                                 CARD32 *size)
+ {
+-    ms_exa_pixmap_priv *priv = exaGetPixmapDriverPrivate(pixmap);
+     ScrnInfoPtr scrn = xf86ScreenToScrn(screen);
+     modesettingPtr ms = modesettingPTR(scrn);
++    ms_exa_pixmap_priv *priv = ms_exa_get_private(pixmap);
+ 
+     if (!ms->drmmode.exa || !priv || !priv->fd)
+         return -1;
+@@ -1177,13 +1187,13 @@ ms_init_exa(ScrnInfoPtr scrn)
+         return FALSE;
+ 
+     exa = ms->drmmode.exa;
+-    exa->driver = exaDriverAlloc();
++    exa->driver = ms->exa.Alloc();
+     if (!exa->driver)
+         goto bail;
+ 
+     ms_setup_exa(exa->driver);
+ 
+-    if (!exaDriverInit(screen, exa->driver))
++    if (!ms->exa.Init(screen, exa->driver))
+         goto bail;
+ 
+     exa->priv = calloc(1, sizeof(ms_exa_ctx));
+@@ -1228,7 +1238,7 @@ ms_deinit_exa(ScrnInfoPtr scrn)
+     }
+ 
+     if (exa->driver) {
+-        exaDriverFini(screen);
++        ms->exa.Fini(screen);
+         free(exa->driver);
+     }
+ 
+-- 
+2.38.5
+

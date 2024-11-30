@@ -1,0 +1,32 @@
+From 6f4be2dfbc352e8e9f509478a07131dd72feb1c2 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:24:51 +0800
+Subject: [PATCH 31/81] Xext/shm: Add a sanity check before calling next
+ CloseScreen()
+
+It might be the last CloseScreen(), so let's add a sanity check before
+calling the next.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ Xext/shm.c | 4 ++++
+ 1 file changed, 4 insertions(+)
+
+diff --git a/Xext/shm.c b/Xext/shm.c
+index 071bd1a41..0b2b9fb99 100644
+--- a/Xext/shm.c
++++ b/Xext/shm.c
+@@ -201,6 +201,10 @@ ShmCloseScreen(ScreenPtr pScreen)
+     pScreen->CloseScreen = screen_priv->CloseScreen;
+     dixSetPrivate(&pScreen->devPrivates, shmScrPrivateKey, NULL);
+     free(screen_priv);
++
++    if (!pScreen->CloseScreen)
++        return TRUE;
++
+     return (*pScreen->CloseScreen) (pScreen);
+ }
+ 
+-- 
+2.38.5
+

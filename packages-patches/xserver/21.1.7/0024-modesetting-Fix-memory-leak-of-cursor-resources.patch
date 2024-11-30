@@ -1,0 +1,28 @@
+From 5915381e647c30e1e2e9ae4082c7dbb37246e080 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 12:14:43 +0800
+Subject: [PATCH 24/81] modesetting: Fix memory leak of cursor resources
+
+Add missing xf86_cursors_fini() to avoid leaking cursor resources.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 76b70ae0d..64008dd41 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -2229,6 +2229,8 @@ CloseScreen(ScreenPtr pScreen)
+     pScreen->CreateScreenResources = ms->createScreenResources;
+     pScreen->BlockHandler = ms->BlockHandler;
+ 
++    xf86_cursors_fini(pScreen);
++
+     pScrn->vtSema = FALSE;
+     pScreen->CloseScreen = ms->CloseScreen;
+     return (*pScreen->CloseScreen) (pScreen);
+-- 
+2.38.5
+

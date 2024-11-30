@@ -1,0 +1,50 @@
+From 3da08a1000c2c80c7b81d6f19efbeff2a0027786 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 9 Aug 2022 18:49:04 +0800
+Subject: [PATCH 66/81] glamor: Disable GLX when GLX extension disabled
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ glamor/glamor.c     | 2 ++
+ glamor/glamor_glx.c | 6 ++++++
+ 2 files changed, 8 insertions(+)
+
+diff --git a/glamor/glamor.c b/glamor/glamor.c
+index 72e649b64..dec533eb1 100644
+--- a/glamor/glamor.c
++++ b/glamor/glamor.c
+@@ -684,8 +684,10 @@ glamor_init(ScreenPtr screen, unsigned int flags)
+     if (flags & GLAMOR_USE_EGL_SCREEN) {
+         glamor_egl_screen_init(screen, &glamor_priv->ctx);
+     } else {
++#ifdef GLXEXT
+         if (!glamor_glx_screen_init(&glamor_priv->ctx))
+             goto fail;
++#endif
+     }
+ 
+     glamor_make_current(glamor_priv);
+diff --git a/glamor/glamor_glx.c b/glamor/glamor_glx.c
+index 7107c7c17..bce1943d8 100644
+--- a/glamor/glamor_glx.c
++++ b/glamor/glamor_glx.c
+@@ -21,6 +21,10 @@
+  * IN THE SOFTWARE.
+  */
+ 
++#include "dix-config.h"
++
++#ifdef GLXEXT
++
+ #include <epoxy/glx.h>
+ #include "glamor_context.h"
+ 
+@@ -66,3 +70,5 @@ glamor_glx_screen_init(struct glamor_context *glamor_ctx)
+ 
+     return True;
+ }
++
++#endif // GLXEXT
+-- 
+2.38.5
+

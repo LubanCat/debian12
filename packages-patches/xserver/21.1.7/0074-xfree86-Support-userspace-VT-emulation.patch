@@ -1,0 +1,92 @@
+From 6a4a7df1722036ac9bdafff92d248f239a9a31a3 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 14 Sep 2023 18:12:08 +0800
+Subject: [PATCH 74/81] xfree86: Support userspace VT emulation
+
+Tested with hacked frecon.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/common/xf86Events.c                | 30 +++++++++++++++++--
+ .../drivers/modesetting/drmmode_display.c     |  3 +-
+ 2 files changed, 30 insertions(+), 3 deletions(-)
+
+diff --git a/hw/xfree86/common/xf86Events.c b/hw/xfree86/common/xf86Events.c
+index 395bbc7b3..450751f84 100644
+--- a/hw/xfree86/common/xf86Events.c
++++ b/hw/xfree86/common/xf86Events.c
+@@ -344,6 +344,22 @@ xf86UpdateHasVTProperty(Bool hasVT)
+     }
+ }
+ 
++/* HACK: For userspace VT emulation */
++static Bool
++vt_emulation(void)
++{
++    const char *env = getenv("VT_EMULATION") ? : "/var/run/frecon/";
++    return !access(env, F_OK);
++}
++
++static Bool
++vt_emulation_activated(void)
++{
++    const char *env =
++        getenv("VT_EMULATION_ACTIVATED") ? : "/var/run/frecon/current";
++    return !access(env, F_OK);
++}
++
+ void
+ xf86VTLeave(void)
+ {
+@@ -386,7 +402,7 @@ xf86VTLeave(void)
+         systemd_logind_drop_master();
+     }
+ 
+-    if (!xf86VTSwitchAway())
++    if (!vt_emulation() && !xf86VTSwitchAway())
+         goto switch_failed;
+ 
+     if (xf86OSPMClose)
+@@ -444,7 +460,7 @@ xf86VTEnter(void)
+     IHPtr ih;
+ 
+     DebugF("xf86VTSwitch: Entering\n");
+-    if (!xf86VTSwitchTo())
++    if (!vt_emulation() && !xf86VTSwitchTo())
+         return;
+ 
+     xf86OSPMClose = xf86OSPMOpen();
+@@ -505,6 +521,16 @@ xf86VTSwitch(void)
+         return;
+ #endif
+ 
++    if (vt_emulation()) {
++        if (vt_emulation_activated() == xf86VTOwner()) {
++            if (xf86VTOwner())
++                xf86VTLeave();
++            else
++                xf86VTEnter();
++        }
++        return;
++    }
++
+     /*
+      * Since all screens are currently all in the same state it is sufficient
+      * check the first.  This might change in future.
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 84f9ee796..3e2e9a503 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -5216,7 +5216,8 @@ drmmode_flip_fb(xf86CrtcPtr crtc, int *timeout)
+     int next_fb;
+ 
+     if (!drmmode_crtc || !crtc->active || !drmmode_crtc_connected(crtc) ||
+-        drmmode_crtc->dpms_mode != DPMSModeOn || drmmode_crtc->rotate_fb_id)
++        drmmode_crtc->dpms_mode != DPMSModeOn || drmmode_crtc->rotate_fb_id ||
++        !drmmode->scrn->vtSema)
+         return TRUE;
+ 
+     if (!drmmode_crtc->flip_fb_enabled)
+-- 
+2.38.5
+

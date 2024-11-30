@@ -1,0 +1,35 @@
+From b649d96362c7083a6c16900db9e50aa8fe804511 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Fri, 11 Jun 2021 09:22:47 +0800
+Subject: [PATCH 2/2] desktop: Avoid setting the xroot's background
+
+Which would affect other monitors.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ src/desktop.c | 2 ++
+ 1 file changed, 2 insertions(+)
+
+diff --git a/src/desktop.c b/src/desktop.c
+index 2705088..409e973 100644
+--- a/src/desktop.c
++++ b/src/desktop.c
+@@ -2389,6 +2389,7 @@ static void update_background(FmDesktop* desktop, int is_it)
+     XChangeProperty(xdisplay, GDK_WINDOW_XID(root),
+                     XA_XROOTMAP_ID, XA_PIXMAP, 32, PropModeReplace, (guchar*)&xpixmap, 1);
+ 
++#if 0 // avoid setting the xroot's background, which would affect other monitors
+     XGrabServer (xdisplay);
+ 
+ #if 0
+@@ -2425,6 +2426,7 @@ static void update_background(FmDesktop* desktop, int is_it)
+ 
+     XFlush(xdisplay);
+     XUngrabServer(xdisplay);
++#endif
+ 
+     if(pix)
+         g_object_unref(pix);
+-- 
+2.34.1
+

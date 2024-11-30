@@ -1,0 +1,30 @@
+From 056948e632f3a42c286e2da6092016ea678fdbb5 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Mon, 11 Apr 2022 12:03:17 +0800
+Subject: [PATCH 59/81] xf86RandR12: Reconfigure screen layouts after CRTC
+ changed
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/modes/xf86RandR12.c | 5 +++++
+ 1 file changed, 5 insertions(+)
+
+diff --git a/hw/xfree86/modes/xf86RandR12.c b/hw/xfree86/modes/xf86RandR12.c
+index 39a38c741..17455a9f9 100644
+--- a/hw/xfree86/modes/xf86RandR12.c
++++ b/hw/xfree86/modes/xf86RandR12.c
+@@ -1235,6 +1235,11 @@ xf86RandR12CrtcSet(ScreenPtr pScreen,
+             crtc->desiredY = y;
+         }
+         xf86DisableUnusedFunctions(pScrn);
++
++	/*
++	 * Make sure the layout is correct
++	 */
++	xf86ReconfigureLayout();
+     }
+     free(save_crtcs);
+     return xf86RandR12CrtcNotify(randr_crtc);
+-- 
+2.38.5
+

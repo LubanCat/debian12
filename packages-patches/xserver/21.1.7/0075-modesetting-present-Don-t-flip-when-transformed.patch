@@ -1,0 +1,39 @@
+From bdd1128bd1a316d2779afcd669c7f9f70794d4c4 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 19 Sep 2023 18:17:13 +0800
+Subject: [PATCH 75/81] modesetting: present: Don't flip when transformed
+
+Follow the dri2 flip condition check.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/present.c | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/present.c b/hw/xfree86/drivers/modesetting/present.c
+index 90d941e23..c64bb51ba 100644
+--- a/hw/xfree86/drivers/modesetting/present.c
++++ b/hw/xfree86/drivers/modesetting/present.c
+@@ -251,13 +251,18 @@ ms_present_check_unflip(RRCrtcPtr crtc,
+         return FALSE;
+ 
+     for (i = 0; i < config->num_crtc; i++) {
+-#ifdef GLAMOR_HAS_GBM
+         drmmode_crtc_private_ptr drmmode_crtc = config->crtc[i]->driver_private;
+ 
+         /* Don't do pageflipping if CRTCs are rotated. */
++#ifdef GLAMOR_HAS_GBM
+         if (drmmode_crtc->rotate_bo.gbm)
+             return FALSE;
+ #endif
++        if (drmmode_crtc->rotate_bo.dumb)
++            return FALSE;
++        if (config->crtc[i]->driverIsPerformingTransform &
++            XF86DriverTransformOutput)
++            return FALSE;
+ 
+         if (xf86_crtc_on(config->crtc[i]))
+             num_crtcs_on++;
+-- 
+2.38.5
+

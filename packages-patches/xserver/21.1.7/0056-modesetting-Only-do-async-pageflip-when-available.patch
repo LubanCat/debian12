@@ -1,0 +1,48 @@
+From 00756961216b13cccbfb7f1457c3db6337792a49 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 15 Feb 2022 15:32:38 +0800
+Subject: [PATCH 56/81] modesetting: Only do async pageflip when available
+
+Not all drm drivers support async pageflip.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/driver.c          | 5 +++++
+ hw/xfree86/drivers/modesetting/drmmode_display.c | 5 +++--
+ 2 files changed, 8 insertions(+), 2 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/driver.c b/hw/xfree86/drivers/modesetting/driver.c
+index 221047f10..cb17ee142 100644
+--- a/hw/xfree86/drivers/modesetting/driver.c
++++ b/hw/xfree86/drivers/modesetting/driver.c
+@@ -1331,6 +1331,11 @@ PreInit(ScrnInfoPtr pScrn, int flags)
+ 
+     drmSetClientCap(ms->fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1);
+ 
++    ms->drmmode.can_async_flip = FALSE;
++    ret = drmGetCap(ms->fd, DRM_CAP_ASYNC_PAGE_FLIP, &value);
++    if (ret == 0 && value == 1)
++        ms->drmmode.can_async_flip = TRUE;
++
+     ms->kms_has_modifiers = FALSE;
+     ret = drmGetCap(ms->fd, DRM_CAP_ADDFB2_MODIFIERS, &value);
+     if (ret == 0 && value != 0)
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 9c1e67752..606eb7267 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -5134,8 +5134,9 @@ drmmode_flip_fb(xf86CrtcPtr crtc, int *timeout)
+     }
+ 
+     if (!ms_do_pageflip_bo(screen, &fb->bo, drmmode_crtc,
+-                           drmmode_crtc->vblank_pipe, crtc, TRUE,
+-                           drmmode_flip_fb_handler, drmmode_flip_fb_abort,
++                           drmmode_crtc->vblank_pipe, crtc,
++                           drmmode->can_async_flip, drmmode_flip_fb_handler,
++                           drmmode_flip_fb_abort,
+                            "FlipFB-flip")) {
+         /* HACK: Workaround commit random interrupted case */
+         if (errno != EPERM) {
+-- 
+2.38.5
+

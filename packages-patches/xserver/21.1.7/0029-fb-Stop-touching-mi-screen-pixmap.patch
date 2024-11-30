@@ -1,0 +1,28 @@
+From c73666c3161de36166cb50c253769a9784e47c0b Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:27:14 +0800
+Subject: [PATCH 29/81] fb: Stop touching mi screen pixmap
+
+The miCloseScreen() would free this pixmap.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ fb/fbscreen.c | 2 --
+ 1 file changed, 2 deletions(-)
+
+diff --git a/fb/fbscreen.c b/fb/fbscreen.c
+index 4ab807ab5..6f4e70f80 100644
+--- a/fb/fbscreen.c
++++ b/fb/fbscreen.c
+@@ -37,8 +37,6 @@ fbCloseScreen(ScreenPtr pScreen)
+         free(depths[d].vids);
+     free(depths);
+     free(pScreen->visuals);
+-    if (pScreen->devPrivate)
+-        FreePixmap((PixmapPtr)pScreen->devPrivate);
+     return TRUE;
+ }
+ 
+-- 
+2.38.5
+

@@ -1,0 +1,94 @@
+From 6f03fdfa446ae15d21090c24b786853e612ae296 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Tue, 30 Nov 2021 19:00:23 +0800
+Subject: [PATCH 51/81] modesetting: Support small screen when flip fb enabled
+
+The legacy drm API requires a large enough buffer for initial modeset.
+
+Let's use a dummy FB for that when flip fb enabled.
+
+Tested on RK356x with:
+xrandr --output HDMI-1 --mode 1920x1080 --scale-from 1280x720
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ .../drivers/modesetting/drmmode_display.c     | 56 ++++++++++++++++++-
+ 1 file changed, 54 insertions(+), 2 deletions(-)
+
+diff --git a/hw/xfree86/drivers/modesetting/drmmode_display.c b/hw/xfree86/drivers/modesetting/drmmode_display.c
+index 8e61a2ee6..f6cacdbbf 100644
+--- a/hw/xfree86/drivers/modesetting/drmmode_display.c
++++ b/hw/xfree86/drivers/modesetting/drmmode_display.c
+@@ -863,6 +863,57 @@ drmmode_crtc_connected(xf86CrtcPtr crtc)
+     return FALSE;
+ }
+ 
++static int
++drmmode_crtc_modeset(xf86CrtcPtr crtc, uint32_t fb_id,
++                     uint32_t x, uint32_t y, uint32_t *output_ids,
++                     int output_count, drmModeModeInfoPtr mode)
++{
++    drmmode_crtc_private_ptr drmmode_crtc = crtc->driver_private;
++    drmmode_ptr drmmode = drmmode_crtc->drmmode;
++    struct dumb_bo *bo = NULL;
++    uint32_t old_fb_id = 0;
++    int ret = -1;
++
++    /* prefer using the original FB */
++    ret = drmModeSetCrtc(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
++                         fb_id, x, y, output_ids, output_count, mode);
++    if (!ret)
++        return 0;
++
++    /* fallback to a new dummy FB */
++    bo = dumb_bo_create(drmmode->fd, mode->hdisplay, mode->vdisplay,
++                        drmmode->kbpp);
++    if (!bo)
++        goto err;
++
++    ret = drmModeAddFB(drmmode->fd, mode->hdisplay, mode->vdisplay,
++                       drmmode->scrn->depth, drmmode->kbpp,
++                       bo->pitch, bo->handle, &fb_id);
++    if (ret < 0)
++        goto err;
++
++    ret = drmModeSetCrtc(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
++                         fb_id, 0, 0, output_ids, output_count, mode);
++    if (ret < 0) {
++        old_fb_id = fb_id;
++        goto err;
++    }
++
++    /* update crtc's current fb_id */
++    old_fb_id = drmmode_crtc->fb_id;
++    drmmode_crtc->fb_id = fb_id;
++
++    ret = 0;
++err:
++    if (bo)
++        dumb_bo_destroy(drmmode->fd, bo);
++
++    if (old_fb_id)
++        drmModeRmFB(drmmode->fd, old_fb_id);
++
++    return ret;
++}
++
+ static int
+ drmmode_crtc_set_mode(xf86CrtcPtr crtc, Bool test_only)
+ {
+@@ -972,8 +1023,9 @@ drmmode_crtc_set_mode(xf86CrtcPtr crtc, Bool test_only)
+     }
+ 
+     drmmode_ConvertToKMode(crtc->scrn, &kmode, &crtc->mode);
+-    ret = drmModeSetCrtc(drmmode->fd, drmmode_crtc->mode_crtc->crtc_id,
+-                         fb_id, x, y, output_ids, output_count, &kmode);
++
++    ret = drmmode_crtc_modeset(crtc, fb_id, x, y,
++                               output_ids, output_count, &kmode);
+ 
+     drmmode_set_ctm(crtc, ctm);
+ 
+-- 
+2.38.5
+

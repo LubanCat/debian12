@@ -1,0 +1,92 @@
+From 2e8b675e53112eb7ead6b01533519b5100e60ed0 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 9 Dec 2021 16:29:02 +0800
+Subject: [PATCH 52/81] meson: Port custom changes from Makefile
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/drivers/modesetting/meson.build | 7 +++++++
+ include/meson.build                        | 8 ++++++++
+ meson.build                                | 5 +++++
+ meson_options.txt                          | 3 +++
+ 4 files changed, 23 insertions(+)
+
+diff --git a/hw/xfree86/drivers/modesetting/meson.build b/hw/xfree86/drivers/modesetting/meson.build
+index 02852a716..419b31eed 100644
+--- a/hw/xfree86/drivers/modesetting/meson.build
++++ b/hw/xfree86/drivers/modesetting/meson.build
+@@ -6,8 +6,14 @@ modesetting_srcs = [
+     'pageflip.c',
+     'present.c',
+     'vblank.c',
++    'exa.c',
++    'xv.c',
+ ]
+ 
++if build_dri3
++    modesetting_srcs += 'dri3.c'
++endif
++
+ shared_module(
+     'modesetting_drv',
+     modesetting_srcs,
+@@ -20,6 +26,7 @@ shared_module(
+         udev_dep,
+         libdrm_dep,
+         gbm_dep,
++        rga_dep,
+     ],
+ 
+     install: true,
+diff --git a/include/meson.build b/include/meson.build
+index 591bc25e0..e192a0d38 100644
+--- a/include/meson.build
++++ b/include/meson.build
+@@ -113,6 +113,14 @@ conf_data.set('GLAMOR_HAS_GBM_LINEAR',
+               build_glamor and gbm_dep.found() and gbm_dep.version().version_compare('>= 10.6') ? '1' : false)
+ conf_data.set('GBM_BO_WITH_MODIFIERS',
+               build_glamor and gbm_dep.found() and gbm_dep.version().version_compare('>= 17.1') ? '1' : false)
++conf_data.set('GLAMOR_HAS_GBM_MAP',
++              build_glamor and cc.has_function('gbm_bo_map', dependencies : gbm_dep) ? '1' : false)
++conf_data.set('GLAMOR_HAS_GL_FENCE',
++              build_glamor and cc.has_function('glFenceSync', dependencies : dependency('glesv2', required : false)) ? '1' : false)
++
++conf_data.set('GLES_USE_HIGHP', get_option('gles-highp') ? '1' : false)
++
++conf_data.set('MODESETTING_WITH_RGA', build_modesetting and rga_dep.found() ? '1' : false)
+ 
+ conf_data.set_quoted('SERVER_MISC_CONFIG_PATH', serverconfigdir)
+ conf_data.set_quoted('PROJECTROOT', get_option('prefix'))
+diff --git a/meson.build b/meson.build
+index bc51d10b7..a265acd72 100644
+--- a/meson.build
++++ b/meson.build
+@@ -441,6 +441,11 @@ endif
+ 
+ build_modesetting = libdrm_dep.found() and dri2proto_dep.found()
+ 
++rga_dep = dependency('', required: false)
++if build_modesetting
++    rga_dep = dependency('librga', required: false)
++endif
++
+ build_vgahw = false
+ if get_option('vgahw') == 'auto'
+     if (host_machine.system() != 'darwin' and
+diff --git a/meson_options.txt b/meson_options.txt
+index b12d521ba..33aee9d5b 100644
+--- a/meson_options.txt
++++ b/meson_options.txt
+@@ -14,6 +14,9 @@ option('xquartz', type: 'combo', choices: ['true', 'false', 'auto'], value: 'aut
+        description: 'Enable Xquartz X server')
+ 
+ 
++option('gles-highp', type: 'boolean', value: true,
++       description: 'Use highp as default precision for GLES (default true)')
++
+ option('builder_addr', type: 'string', description: 'Builder address', value: 'xorg@lists.freedesktop.org')
+ option('builder_string', type: 'string', description: 'Additional builder string')
+ 
+-- 
+2.38.5
+

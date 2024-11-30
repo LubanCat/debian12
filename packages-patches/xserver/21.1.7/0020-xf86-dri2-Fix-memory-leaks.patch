@@ -1,0 +1,64 @@
+From 30919a3b08e9358e87bc22d12cc38d5d7f1b5477 Mon Sep 17 00:00:00 2001
+From: Jeffy Chen <jeffy.chen@rock-chips.com>
+Date: Thu, 29 Aug 2019 11:19:58 +0800
+Subject: [PATCH 20/81] xf86: dri2: Fix memory leaks
+
+Fix memory leaks of drm device and driver name.
+
+Signed-off-by: Jeffy Chen <jeffy.chen@rock-chips.com>
+---
+ hw/xfree86/dri2/dri2.c | 10 ++++++----
+ 1 file changed, 6 insertions(+), 4 deletions(-)
+
+diff --git a/hw/xfree86/dri2/dri2.c b/hw/xfree86/dri2/dri2.c
+index 3397bb50c..6c54531db 100644
+--- a/hw/xfree86/dri2/dri2.c
++++ b/hw/xfree86/dri2/dri2.c
+@@ -108,6 +108,7 @@ typedef struct _DRI2Screen {
+     unsigned int numDrivers;
+     const char **driverNames;
+     const char *deviceName;
++    const char *driverName;
+     int fd;
+     unsigned int lastSequence;
+     int prime_id;
+@@ -1441,7 +1442,7 @@ dri2_probe_driver_name(ScreenPtr pScreen, DRI2InfoPtr info)
+ #ifdef WITH_LIBDRM
+     int i, j;
+     char *driver = NULL;
+-    drmDevicePtr dev;
++    drmDevicePtr dev = NULL;
+ 
+     /* For non-PCI devices and drmGetDevice fail, just assume that
+      * the 3D driver is named the same as the kernel driver. This is
+@@ -1459,6 +1460,7 @@ dri2_probe_driver_name(ScreenPtr pScreen, DRI2InfoPtr info)
+ 
+         driver = strndup(version->name, version->name_len);
+         drmFreeVersion(version);
++        drmFreeDevice(&dev);
+         return driver;
+     }
+ 
+@@ -1602,9 +1604,8 @@ DRI2ScreenInit(ScreenPtr pScreen, DRI2InfoPtr info)
+         if (info->driverName) {
+             ds->driverNames[0] = info->driverName;
+         } else {
+-            /* FIXME dri2_probe_driver_name() returns a strdup-ed string,
+-             * currently this gets leaked */
+-            ds->driverNames[0] = ds->driverNames[1] = dri2_probe_driver_name(pScreen, info);
++            ds->driverName = dri2_probe_driver_name(pScreen, info);
++            ds->driverNames[0] = ds->driverNames[1] = ds->driverName;
+             if (!ds->driverNames[0])
+                 return FALSE;
+ 
+@@ -1660,6 +1661,7 @@ DRI2CloseScreen(ScreenPtr pScreen)
+     if (ds->prime_id)
+         prime_id_allocate_bitmask &= ~(1 << ds->prime_id);
+     free(ds->driverNames);
++    free((char *)ds->driverName);
+     free(ds);
+     dixSetPrivate(&pScreen->devPrivates, dri2ScreenPrivateKey, NULL);
+ }
+-- 
+2.38.5
+
