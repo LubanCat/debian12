@@ -20,66 +20,46 @@ install_packages() {
 		cat /sys/devices/platform/*gpu/gpuinfo | grep -q r1p0 && \
 		MALI=midgard-t76x-r18p0-r1p0
 		sed -i "s/always/none/g" /etc/X11/xorg.conf.d/20-modesetting.conf
-		[ -e /usr/lib/arm-linux-gnueabihf/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11*.deb
 		;;
         rk3399|rk3399pro)
 		MALI=midgard-t86x-r18p0
 		ISP=rkisp
 		sed -i "s/always/none/g" /etc/X11/xorg.conf.d/20-modesetting.conf
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11*.deb
 		;;
         rk3328|rk3528)
 		MALI=utgard-450
 		ISP=rkisp
 		sed -i "s/always/none/g" /etc/X11/xorg.conf.d/20-modesetting.conf
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11*.deb
 		;;
         rk3326|px30)
 		MALI=bifrost-g31-g13p0
 		ISP=rkisp
 		sed -i "s/always/none/g" /etc/X11/xorg.conf.d/20-modesetting.conf
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11*.deb
 		;;
         rk3128|rk3036)
 		MALI=utgard-400
 		ISP=rkisp
 		sed -i "s/always/none/g" /etc/X11/xorg.conf.d/20-modesetting.conf
-		[ -e /usr/lib/arm-linux-gnueabihf/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11*.deb
 		;;
         rk3568|rk3566)
 		MALI=bifrost-g52-g13p0
 		ISP=rkaiq_rk3568
 		[ -e /usr/lib/aarch64-linux-gnu/ ] && tar xvf /rknpu2.tar -C /
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11-wayland-gbm*.deb
 		;;
         rk3562)
 		MALI=bifrost-g52-g13p0
 		ISP=rkaiq_rk3562
 		[ -e /usr/lib/aarch64-linux-gnu/ ] && tar xvf /rknpu2.tar -C /
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11-wayland-gbm*.deb
 		;;
         rk3576)
 		MALI=bifrost-g52-g13p0
 		ISP=rkaiq_rk3576
 		[ -e /usr/lib/aarch64-linux-gnu/ ] && tar xvf /rknpu2.tar -C /
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11-wayland-gbm*.deb
 		;;
         rk3588|rk3588s)
 		ISP=rkaiq_rk3588
 		MALI=valhall-g610-g24p0
 		[ -e /usr/lib/aarch64-linux-gnu/ ] && tar xvf /rknpu2.tar -C /
-		[ -e /usr/lib/aarch64-linux-gnu/ ] && apt install -fy --allow-downgrades /camera_engine_$ISP*.deb
-		apt install -fy --allow-downgrades /libmali-*$MALI*-x11-wayland-gbm*.deb
-		;;
-        *)
-		echo "This chip does not support gpu acceleration or not input!!!"
 		;;
     esac
 }
@@ -123,16 +103,33 @@ esac
 compatible="${compatible#rockchip,}"
 boardname="${compatible%%rockchip,*}"
 
+/etc/init.d/boot_init.sh
+
+sleep 3s
+
 # first boot configure
 if [ ! -e "/usr/local/first_boot_flag" ]; then
     echo "It's the first time booting. The rootfs will be configured."
+
+    Mem_Size=$(free -m | grep Mem | awk '{print $2}')
+    if [ '1500' -gt $Mem_Size  ] ;
+    then
+        echo 'Mem_Size =' $Mem_Size 'MB , make swap memory '
+        swapoff -a
+        dd if=/dev/zero of=/var/swapfile bs=1M count=1024
+        mkswap /var/swapfile
+        swapon /var/swapfile
+        echo "/var/swapfile swap swap defaults 0 0" >> /etc/fstab
+    fi
 
     # Force rootfs synced
     mount -o remount,sync /
 
     install_packages "$chipname" || exit 1
 
-    setcap CAP_SYS_ADMIN+ep /usr/bin/gst-launch-1.0
+    if [ -e /usr/bin/gst-launch-1.0 ]; then
+        setcap CAP_SYS_ADMIN+ep /usr/bin/gst-launch-1.0
+    fi
 
     if [ -e "/dev/rfkill" ]; then
         rm /dev/rfkill
@@ -140,14 +137,24 @@ if [ ! -e "/usr/local/first_boot_flag" ]; then
 
     rm -rf /*.deb /*.tar
 
-    touch /usr/local/first_boot_flag
+    # # The base target does not come with lightdm/rkaiq_3A
+    # if [ -e /etc/gdm3/daemon.conf ]; then
+    #     systemctl restart gdm3.service || true
+    # elif [ -e /etc/lightdm/lightdm.conf ]; then
+    #     systemctl restart lightdm.service || true
+    # fi
 
-    # In order to achieve better compatibility, various applications will being
-    # installed during the first system startup. This can result in slow boot times,
-    # slow read/write speeds, and issues such as PipeWire audio being silent.
-    sync
-    shutdown -r now
+    # if [ -e /usr/lib/systemd/system/rkisp_3A.service ]; then
+    #     systemctl restart rkisp_3A.service || true
+    # elif [ -e /usr/lib/systemd/system/rkaiq_3A.service ]; then
+    #     systemctl restart rkaiq_3A.service || true
+    # fi
+
+    touch /usr/local/first_boot_flag
 fi
+
+# #usb configfs reset
+# /usr/bin/usbdevice restart
 
 # support power management
 if [ -e "/usr/sbin/pm-suspend" ] && [ -e /etc/Powermanager ]; then
