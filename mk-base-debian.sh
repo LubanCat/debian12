@@ -1,15 +1,39 @@
 #!/bin/bash -e
 
-if [ "$RELEASE" == "stretch" ]; then
+if [ ! $TARGET ]; then
+	echo "---------------------------------------------------------"
+	echo "please enter desktop type number:"
+	echo "请输入要构建桌面的序号:"
+	echo "[0] Exit Menu"
+	echo "[1] xfce"
+	echo "[2] lxde"
+	echo "[3] gnome"
+	echo "[4] lite"
+	echo "---------------------------------------------------------"
+	read input
+
+	case $input in
+        0)  exit ;;
+        1)  TARGET=xfce ;;
+        2)  TARGET=lxde ;;
+        3)  TARGET=gnome ;;
+        4)  TARGET=lite ;;
+		*)	echo 'input desktop type error, exit !'
+			exit;;
+	esac
+fi
+
+if [[ "$RELEASE" == "stretch" || "$RELEASE" == "9" ]]; then
 	RELEASE='stretch'
-elif [ "$RELEASE" == "buster" ]; then
+elif [[ "$RELEASE" == "buster" || "$RELEASE" == "10" ]]; then
 	RELEASE='buster'
-elif [ "$RELEASE" == "bullseye" ]; then
+elif [[ "$RELEASE" == "bullseye" || "$RELEASE" == "11" ]]; then
 	RELEASE='bullseye'
-elif [ "$RELEASE" == "bookworm" ]; then
+elif [[ "$RELEASE" == "bookworm" || "$RELEASE" == "12" ]]; then
 	RELEASE='bookworm'
 else
-    echo -e "\033[36m please input the os type: stretch, buster, bullseye or bookworm...... \033[0m"
+	RELEASE='bookworm'
+	echo -e "\033[47;36m set default RELEASE=bookworm...... \033[0m"
 fi
 
 if [ "$ARCH" == "armhf" ]; then
@@ -17,20 +41,25 @@ if [ "$ARCH" == "armhf" ]; then
 elif [ "$ARCH" == "arm64" ]; then
 	ARCH='arm64'
 else
-    echo -e "\033[36m please input the os type,armhf or arm64...... \033[0m"
+	ARCH="arm64"
+	echo -e "\033[47;36m set default ARCH=arm64...... \033[0m"
 fi
 
-if [ ! $TARGET ]; then
-	TARGET='desktop'
+if [ "$TARGET" == "lite" ]; then
+	BUILD_VERSION='base'
+	echo -e "\033[47;36m set TARGET=lite, use $RELEASE-base-$ARCH to build ...... \033[0m"
+else
+	BUILD_VERSION=$TARGET
 fi
 
-if [ -e linaro-$RELEASE-alip-*.tar.gz ]; then
-	rm linaro-$RELEASE-alip-*.tar.gz
+if [ -e linaro-$RELEASE-$TARGET-$ARCH-alip-*.tar.gz ]; then
+	rm linaro-$RELEASE-$TARGET-$ARCH-alip-*.tar.gz
 fi
 
-cd ubuntu-build-service/$RELEASE-$TARGET-$ARCH
 
-echo -e "\033[36m Staring Download...... \033[0m"
+cd ubuntu-build-service/$RELEASE-$BUILD_VERSION-$ARCH
+
+echo -e "\033[47;36m Staring Download...... \033[0m"
 
 make clean
 
@@ -38,9 +67,10 @@ make clean
 
 make
 
+DATE=$(date +%Y%m%d)
 if [ -e linaro-$RELEASE-alip-*.tar.gz ]; then
 	sudo chmod 0666 linaro-$RELEASE-alip-*.tar.gz
-	mv linaro-$RELEASE-alip-*.tar.gz ../../
+	mv linaro-$RELEASE-alip-*.tar.gz ../../linaro-$RELEASE-$TARGET-$ARCH-alip-$DATE.tar.gz
 else
-	echo -e "\e[31m Failed to run livebuild, please check your network connection. \e[0m"
+	echo -e "\e[41;31m Failed to run livebuild, please check your network connection. \e[0m"
 fi
