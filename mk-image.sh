@@ -1,19 +1,25 @@
 #!/bin/bash -e
 
 TARGET_ROOTFS_DIR=./binary
-ROOTFSIMAGE=linaro-rootfs.img
 
+if [ $RK_ROOTFS_IMAGE ]; then
+	ROOTFSIMAGE=$RK_ROOTFS_IMAGE
+else
+	ROOTFSIMAGE=linaro-$TARGET-rootfs.img
+fi
 
 echo Making rootfs!
 
 if [ -e ${ROOTFSIMAGE} ]; then
-	sudo rm ${ROOTFSIMAGE}
+	rm -f ${ROOTFSIMAGE}
 fi
 
-for script in ./post-build.sh ../device/rockchip/common/post-build.sh; do
-	[ -x $script ] || continue
-	sudo $script "$(realpath "$TARGET_ROOTFS_DIR")"
-done
+# for script in ./post-build.sh ../device/rockchip/common/post-build.sh; do
+# 	[ -x $script ] || continue
+# 	sudo $script "$(realpath "$TARGET_ROOTFS_DIR")"
+# done
+
+sudo ./add-build-info.sh ${TARGET_ROOTFS_DIR}
 
 # Apparent size + maxium alignment(file_count * block_size) + maxium journal size
 IMAGE_SIZE_MB=$(( $(sudo du --apparent-size -sm ${TARGET_ROOTFS_DIR} | cut -f1) + \

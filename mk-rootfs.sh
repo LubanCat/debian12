@@ -1,7 +1,18 @@
 #!/bin/bash -e
 
-if [ ! $RELEASE ]; then
+if [[ "$RELEASE" == "stretch" || "$RELEASE" == "9" ]]; then
 	RELEASE='stretch'
+elif [[ "$RELEASE" == "buster" || "$RELEASE" == "10" ]]; then
+	RELEASE='buster'
+elif [[ "$RELEASE" == "bullseye" || "$RELEASE" == "11" ]]; then
+	RELEASE='bullseye'
+elif [[ "$RELEASE" == "bookworm" || "$RELEASE" == "12" ]]; then
+	RELEASE='bookworm'
+else
+    echo -e "\033[41;36m please input the os type: stretch, buster, bullseye or bookworm ...... \033[0m"
+	exit
 fi
 
-./mk-rootfs-$RELEASE.sh
+echo "VERSION="$RK_ROOTFS_DEBUG "TARGET="$RK_ROOTFS_TARGET "SOC="$SOC "./mk-"$RELEASE"-rootfs.sh"
+
+./mk-"$RELEASE"-rootfs.sh
