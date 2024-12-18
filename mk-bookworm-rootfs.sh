@@ -91,7 +91,7 @@ install_packages() {
         ISP=rkaiq_rk3576
         ;;
         rk3588|rk3588s)
-        MALI=valhall-g610-g13p0
+        MALI=valhall-g610-g24p0
         MALI_PKG=libmali-*$MALI*-x11-wayland-gbm*
         ISP=rkaiq_rk3588
         MIRROR=carp-rk3588
