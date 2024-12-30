@@ -48,6 +48,11 @@ board_info() {
 				BOARD_DTB='rk3562-lubancat-1hs.dtb'
 				BOARD_uEnv='uEnvLubanCat1HS.txt'
 				;;
+			0100)
+				BOARD_NAME='LubanCat-1HSI'
+				BOARD_DTB='rk3562-lubancat-1hs.dtb'
+				BOARD_uEnv='uEnvLubanCat1HS.txt'
+				;;
 			*)
 				echo "Device ID Error !!!"
 				BOARD_NAME='LubanCat-RK3562'
