@@ -398,4 +398,4 @@ rm -rf /sha256sum*
 
 EOF
 
-TARGET=$TARGET ./mk-image.sh 
+TARGET=$TARGET SOC=$SOC ./mk-image.sh 
