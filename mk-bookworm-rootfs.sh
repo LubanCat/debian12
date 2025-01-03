@@ -194,7 +194,7 @@ apt-get upgrade -y
 export APT_INSTALL="apt-get install -fy --allow-downgrades"
 
 echo -e "\033[47;36m ---------- LubanCat -------- \033[0m"
-\${APT_INSTALL} dialog toilet u-boot-tools edid-decode logrotate
+\${APT_INSTALL} dialog toilet u-boot-tools edid-decode logrotate fire-config lbc-test
 
 # pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple setuptools wheel
 # pip3 install -i https://pypi.tuna.tsinghua.edu.cn/simple python-periphery Adafruit-Blinka
@@ -213,31 +213,19 @@ systemctl disable apt-daily-upgrade.service
 # set localtime
 ln -sf /usr/share/zoneinfo/Asia/Shanghai /etc/localtime
 if [[ "$TARGET" == "gnome" ]]; then
-    if [ $MIRROR ]; then
-        \${APT_INSTALL} fire-config fire-config-gui lbc-test
-    fi
-    \${APT_INSTALL} mpv
+    \${APT_INSTALL} mpv fire-config-gui
     #Desktop background picture
     # ln -sf /usr/share/images/desktop-base/lubancat-wallpaper.png /etc/alternatives/desktop-background
 elif [[ "$TARGET" == "xfce" ]]; then
-    if [ $MIRROR ]; then
-        \${APT_INSTALL} fire-config fire-config-gui lbc-test
-    fi
-    \${APT_INSTALL} mpv
+    \${APT_INSTALL} mpv fire-config-gui
     #Desktop background picture
     chown -hR cat:cat /home/cat/.config
     ln -sf /usr/share/images/desktop-base/lubancat-wallpaper.png /etc/alternatives/desktop-background
 elif [[ "$TARGET" == "lxde" ]]; then
-    if [ $MIRROR ]; then
-        \${APT_INSTALL} fire-config fire-config-gui lbc-test
-    fi
-    \${APT_INSTALL} mpv
+    \${APT_INSTALL} mpv fire-config-gui
     #Desktop background picture
     # ln -sf /usr/share/desktop-base/images/lubancat-wallpaper.png 
 elif [ "$TARGET" == "lite" ]; then
-    if [ $MIRROR ]; then
-        \${APT_INSTALL} fire-config lbc-test
-    fi
     \${APT_INSTALL} bluez bluez-tools
 fi
 
