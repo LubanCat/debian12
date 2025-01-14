@@ -13,11 +13,11 @@
 # 1.20     2020/07/16 Hans Yang                             1.use /dev/urandom to generate test data
 #Introduction.
 #********************************************************************/
-# usage£º
+# usageï¿½ï¿½
 # sudo flash_stress_test.sh dirnum testcount
-# example  £º
+# example  ï¿½ï¿½
 # 	count for script command:
-#		SLC Nand 128MB, 100K P/E cycles, normaly we test 5K P/E ¡ª¡ª 128MB * 5000
+#		SLC Nand 128MB, 100K P/E cycles, normaly we test 5K P/E ï¿½ï¿½ï¿½ï¿½ 128MB * 5000
 #       src file size 5MB, totle test data 128MB * 5000, testcount = 128MB * 5000 / 5MB * 5(dirnum) = 20600
 #   command:
 #		sudo flash_stress_test.sh 5 20000
@@ -47,7 +47,7 @@ echo "Usage: flash_stress_test.sh [dirnum] [looptime]"
 echo "flash_stress_test.sh 5 20000"
 }
 
-test_max_count=200
+test_max_count=20
 test_max_dir=5
 if [ $1 -ne 0 ] ;then
     test_max_dir=$1

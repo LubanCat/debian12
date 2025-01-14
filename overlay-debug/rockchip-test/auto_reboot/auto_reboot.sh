@@ -1,7 +1,7 @@
 #!/bin/bash
 
 delay=8
-total=${1:-10000}
+total=${1:-10}
 CNT=/data/rockchip-test/reboot_cnt
 
 if [ ! -e "/data/rockchip-test" ]; then

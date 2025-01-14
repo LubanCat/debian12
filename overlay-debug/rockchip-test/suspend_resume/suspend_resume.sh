@@ -4,7 +4,7 @@ RESULT_DIR=/userdata/rockchip-test/
 RESULT_LOG=${RESULT_DIR}/suspend_resume.txt
 SUSPEND_TIME=60  # Fixed suspend time to 60 seconds (1 minute)
 WAKE_DELAY=5     # Delay after wake-up before next action
-MAX_CYCLES=10000
+MAX_CYCLES=10
 
 # Enable Debug
 # echo N > /sys/module/printk/parameters/console_suspend

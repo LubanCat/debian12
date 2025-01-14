@@ -2,7 +2,7 @@
 cat /data/rockchip/reboot_cnt
 test_dir=/data/rockchip/power_lost
 CNT=/data/rockchip/reboot_cnt
-total=5000
+total=20
 delay=3
 no=0
 

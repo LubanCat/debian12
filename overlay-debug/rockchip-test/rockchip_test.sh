@@ -69,7 +69,7 @@ cpu_test()
 
 flash_stress_test()
 {
-    bash ${CURRENT_DIR}/flash_test/flash_stress_test.sh 5 20000 &
+    bash ${CURRENT_DIR}/flash_test/flash_stress_test.sh &
 }
 
 recovery_test()

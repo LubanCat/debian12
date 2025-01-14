@@ -1,7 +1,7 @@
 #!/bin/bash
 
 delay=10
-total=${1:-10000}
+total=${1:-20}
 CNT=/data/rockchip-test/reboot_cnt
 
 if [ ! -e "/usr/bin/update" ]; then

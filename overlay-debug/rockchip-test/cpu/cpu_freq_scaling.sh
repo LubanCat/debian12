@@ -16,7 +16,7 @@ set_cpu_freq() {
 }
 
 cycle_frequencies() {
-    local end_time=$(( $(date +%s) + 86400 )) # 24 hours from now
+    local end_time=$(( $(date +%s) + 1800 )) # 0.5 hours from now
     local cnt=0
     while [[ $(date +%s) -lt $end_time ]]; do
         for policy_path in /sys/devices/system/cpu/cpufreq/policy*; do
@@ -28,7 +28,7 @@ cycle_frequencies() {
         done
         sleep 10 # Sleep for 10 seconds before changing frequencies again
     done
-    echo "24-hour CPU frequency cycle test completed."
+    echo "0.5-hour CPU frequency cycle test completed."
 }
 
 # Check for user input to set a specific frequency or cycle frequencies

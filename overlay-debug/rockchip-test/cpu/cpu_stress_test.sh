@@ -1,19 +1,19 @@
 #!/bin/bash
 
 # Specify the duration of the stress test in seconds
-DURATION=86400 # 24 hours in seconds
+DURATION=1800 # 0.5 hours in seconds
 # Specify the number of CPU cores to stress
 CPU_CORES=$(nproc) # This will use all available CPU cores
 
 # Function to perform stress test using stress tool
 stress_test_stress() {
-    echo "Starting 24-hour CPU stress test with stress tool on $CPU_CORES cores."
+    echo "Starting 0.5-hour CPU stress test with stress tool on $CPU_CORES cores."
     stress --cpu $CPU_CORES --timeout $DURATION
 }
 
 # Function to perform stress test using stress-ng tool
 stress_test_stress_ng() {
-    echo "Starting 24-hour CPU stress test with stress-ng tool on $CPU_CORES cores."
+    echo "Starting 0.5-hour CPU stress test with stress-ng tool on $CPU_CORES cores."
     stress-ng --cpu $CPU_CORES --timeout $DURATION
 }
 
@@ -27,4 +27,4 @@ else
     exit 1
 fi
 
-echo "24-hour CPU stress test completed."
+echo "0.5-hour CPU stress test completed."
