@@ -62,7 +62,6 @@ libgpiod-dev
 libgtk2.0-dev
 libgtk-3-dev
 libsox-fmt-all
-light-locker
 lm-sensors
 locales
 lsb-release
