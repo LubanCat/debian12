@@ -285,11 +285,15 @@ if [[ "$TARGET" == "gnome" || "$TARGET" == "xfce" || "$TARGET" == "lxde" ]]; the
     echo -e "\033[47;36m -------     ibus    -------- \033[0m"
     \${APT_INSTALL} ibus ibus-libpinyin
 
-    echo -e "\033[47;36m -------   pipewire  -------- \033[0m"
-    \${APT_INSTALL} pipewire pipewire-pulse pipewire-alsa libspa-0.2-bluetooth
-    \${APT_INSTALL} /packages/pipewire/*.deb
-    \${APT_INSTALL} /packages/wireplumber/*.deb
-    find /usr/lib/systemd/ -name "wireplumber*.service" | xargs sed -i "/Environment/s/$/ DISPLAY=:0/"
+    # echo -e "\033[47;36m -------   pipewire  -------- \033[0m"
+    # \${APT_INSTALL} pipewire pipewire-pulse pipewire-alsa libspa-0.2-bluetooth
+    # \${APT_INSTALL} /packages/pipewire/*.deb
+    # \${APT_INSTALL} /packages/wireplumber/*.deb
+    # find /usr/lib/systemd/ -name "wireplumber*.service" | xargs sed -i "/Environment/s/$/ DISPLAY=:0/"
+
+    # fix pipewire output control
+    \${APT_INSTALL} pulseaudio pulseaudio-utils pavucontrol
+    apt purge -f -y pipewire-pulse
 
     # echo -e "\033[47;36m ------ Install openbox ----- \033[0m"
     # \${APT_INSTALL} /packages/openbox/*.deb
