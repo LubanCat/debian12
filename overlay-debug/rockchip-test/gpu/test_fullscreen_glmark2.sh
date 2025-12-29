@@ -13,28 +13,28 @@ elif [[ "$1" == "rk1808" || "$1" == "rk3308" ]]; then
 	echo "the chips didn't support gpu"
 
 elif [[ "$1" == "rk3288" ]]; then
-	glmark2-es2 --fullscreen --visual-config='a=0:buf=24'--annotate
+	glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3328" || "$1" == "rk3528" ]]; then
 	glmark2-es2 --fullscreen --visual-config='stencil=8' --annotate
 
 elif [[  "$1" == "rk3399"  ]]; then
-	taskset -c 4-5 glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	taskset -c 4-5 glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3399pro" ]]; then
-	taskset -c 4-5 glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	taskset -c 4-5 glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3562" ]]; then
-	glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3566" || "$1" == "rk3568" ]]; then
-	glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3576" ]]; then
-	taskset -c 4-8 glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	taskset -c 4-8 glmark2-es2 --fullscreen --annotate
 
 elif [[ "$1" == "rk3588" || "$1" == "rk3588s" ]]; then
-	taskset -c 4-8 glmark2-es2 --fullscreen --visual-config='a=0:buf=24' --annotate
+	taskset -c 4-8 glmark2-es2 --fullscreen --annotate
 
 else
 	echo "please check if the linux support it!!!!!!"
