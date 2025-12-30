@@ -86,7 +86,7 @@ install_packages() {
         MIRROR=carp-rk356x
         ;;
         rk3576)
-        MALI=bifrost-g52-g24p0
+        MALI=bifrost-g52-g13p0
         MALI_PKG=libmali-*$MALI*-x11-wayland-gbm*
         ISP=rkaiq_rk3576
         ;;
