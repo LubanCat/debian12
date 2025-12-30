@@ -74,19 +74,19 @@ install_packages() {
         ISP=rkisp
         ;;
         rk3562)
-        MALI=bifrost-g52-g13p0
+        MALI=bifrost-g52-g24p0
         MALI_PKG=libmali-*$MALI*-x11-wayland-gbm*
         ISP=rkaiq_rk3562
         MIRROR=carp-rk356x
         ;;
         rk356x|rk3566|rk3568)
-        MALI=bifrost-g52-g13p0
+        MALI=bifrost-g52-g24p0
         MALI_PKG=libmali-*$MALI*-x11-wayland-gbm*
         ISP=rkaiq_rk3568
         MIRROR=carp-rk356x
         ;;
         rk3576)
-        MALI=bifrost-g52-g13p0
+        MALI=bifrost-g52-g24p0
         MALI_PKG=libmali-*$MALI*-x11-wayland-gbm*
         ISP=rkaiq_rk3576
         ;;
@@ -155,9 +155,6 @@ sudo cp -rpf overlay-firmware/* $TARGET_ROOTFS_DIR/
 if [ "$VERSION" == "debug" ]; then
     sudo cp -rpf overlay-debug/* $TARGET_ROOTFS_DIR/
 fi
-
-# Prevent dpkg interactive dialogues
-export DEBIAN_FRONTEND=noninteractive
 
 echo -e "\033[47;36m Change root.....................\033[0m"
 ID=$(stat --format %u $TARGET_ROOTFS_DIR)
@@ -259,41 +256,16 @@ elif [ "$TARGET" == "lite" ]; then
     \${APT_INSTALL} /packages/gst-rkmpp/*.deb
 fi
 
-if [[ "$TARGET" == "gnome" ]]; then
-    echo -e "\033[47;36m ----- Install Xserver------- \033[0m"
-    \${APT_INSTALL} /packages/xserver/xserver-xorg-*.deb
-
-    apt-mark hold xserver-xorg-core xserver-xorg-legacy
-elif [[ "$TARGET" == "xfce" || "$TARGET" == "lxde" ]]; then
-    echo -e "\033[47;36m ----- Install Xserver------- \033[0m"
-    \${APT_INSTALL} /packages/xserver/*.deb
-
-    apt-mark hold xserver-common xserver-xorg-core xserver-xorg-legacy
-fi
-
 if [[ "$TARGET" == "gnome" || "$TARGET" == "xfce" || "$TARGET" == "lxde" ]]; then
     echo -e "\033[47;36m ----- Install Camera ------- \033[0m"
     \${APT_INSTALL} cheese v4l-utils
     \${APT_INSTALL} /packages/libv4l/*.deb
     \${APT_INSTALL} /packages/cheese/*.deb
 
-    echo -e "\033[47;36m ----- Wayland/Weston ------- \033[0m"
-    \${APT_INSTALL} libseat-dev
-    \${APT_INSTALL} /packages/weston/*.deb
-    \${APT_INSTALL} /packages/wayland/*.deb
+    echo -e "\033[47;36m ----- Install Xserver------- \033[0m"
+    \${APT_INSTALL} /packages/xserver/*.deb
 
-    echo -e "\033[47;36m -------     ibus    -------- \033[0m"
-    \${APT_INSTALL} ibus ibus-libpinyin
-
-    # echo -e "\033[47;36m -------   pipewire  -------- \033[0m"
-    # \${APT_INSTALL} pipewire pipewire-pulse pipewire-alsa libspa-0.2-bluetooth
-    # \${APT_INSTALL} /packages/pipewire/*.deb
-    # \${APT_INSTALL} /packages/wireplumber/*.deb
-    # find /usr/lib/systemd/ -name "wireplumber*.service" | xargs sed -i "/Environment/s/$/ DISPLAY=:0/"
-
-    # fix pipewire output control
-    \${APT_INSTALL} pulseaudio pulseaudio-utils pavucontrol
-    apt purge -f -y pipewire-pulse
+    apt-mark hold xserver-common xserver-xorg-core xserver-xorg-legacy
 
     # echo -e "\033[47;36m ------ Install openbox ----- \033[0m"
     # \${APT_INSTALL} /packages/openbox/*.deb
@@ -346,6 +318,26 @@ fi
 \${APT_INSTALL} ttf-wqy-zenhei fonts-aenigma
 \${APT_INSTALL} xfonts-intl-chinese
 
+if [[ "$TARGET" == "gnome" || "$TARGET" == "xfce" || "$TARGET" == "lxde" ]]; then
+    echo -e "\033[47;36m -------     ibus    -------- \033[0m"
+    \${APT_INSTALL} ibus ibus-libpinyin
+
+    # echo -e "\033[47;36m -------   pipewire  -------- \033[0m"
+    # \${APT_INSTALL} pipewire pipewire-pulse pipewire-alsa libspa-0.2-bluetooth
+    # \${APT_INSTALL} /packages/pipewire/*.deb
+    # \${APT_INSTALL} /packages/wireplumber/*.deb
+    # find /usr/lib/systemd/ -name "wireplumber*.service" | xargs sed -i "/Environment/s/$/ DISPLAY=:0/"
+
+    # fix pipewire output control
+    \${APT_INSTALL} pulseaudio pulseaudio-utils pavucontrol
+    apt purge -f -y pipewire-pulse
+
+    echo -e "\033[47;36m ----- Wayland/Weston ------- \033[0m"
+    \${APT_INSTALL} libseat-dev
+    \${APT_INSTALL} /packages/weston/*.deb
+    \${APT_INSTALL} /packages/wayland/*.deb
+fi
+
 # HACK debian11.3 to fix bug
 #\${APT_INSTALL} fontconfig --reinstall
 
@@ -353,12 +345,11 @@ fi
 #sed -i "/exit 0/i \ echo 3 > /sys/class/graphics/fb0/blank" /etc/rc.local
 
 # mark package to hold
-apt list --upgradable | cut -d/ -f1 | xargs apt-mark hold
+apt list --installed | grep -v oldstable | cut -d/ -f1 | xargs apt-mark hold
 
 #---------------Custom Script--------------
 systemctl mask systemd-networkd-wait-online.service
 systemctl mask NetworkManager-wait-online.service
-systemctl disable hostapd
 rm /lib/systemd/system/wpa_supplicant@.service
 
 #---------------Clean--------------
