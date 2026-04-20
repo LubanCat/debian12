@@ -22,6 +22,7 @@ curl
 dbus-x11
 debian-keyring
 dnsmasq-base
+dosfstools
 eject
 ethtool
 evtest
@@ -45,6 +46,7 @@ i2c-tools
 idlestat
 ifupdown
 initscripts
+initramfs-tools
 input-utils
 iotop
 iperf
