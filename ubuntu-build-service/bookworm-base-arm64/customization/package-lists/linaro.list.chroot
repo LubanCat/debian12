@@ -89,6 +89,7 @@ v4l-utils
 vim
 vim-tiny
 wget
+whiptail
 wireless-tools
 wpasupplicant
 xinput
