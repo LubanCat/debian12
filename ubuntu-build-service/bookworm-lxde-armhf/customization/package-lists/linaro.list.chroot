@@ -10,6 +10,7 @@ alsa-utils
 anacron
 apt
 apt-utils
+auto-apt-proxy
 bash-completion
 #babeltrace
 #bc
