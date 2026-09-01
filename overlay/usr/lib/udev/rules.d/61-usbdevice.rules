@@ -1,1 +1,1 @@
-SUBSYSTEM=="android_usb",ACTION=="change",RUN+="/usr/bin/usbdevice update"
+SUBSYSTEM=="android_usb",ACTION=="change",RUN+="/usr/bin/systemd-run --no-block /usr/bin/usbdevice update"

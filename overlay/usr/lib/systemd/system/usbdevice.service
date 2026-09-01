@@ -1,12 +1,12 @@
 [Unit]
 Description=Manage USB device functions
-DefaultDependencies=no
 After=local-fs.target
 
 [Service]
-Type=forking
+Type=simple
 ExecStart=/usr/bin/usbdevice start
 ExecStop=/usr/bin/usbdevice stop
+RemainAfterExit=yes
 
 [Install]
-WantedBy=sysinit.target
+WantedBy=local-fs.target
