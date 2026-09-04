@@ -26,7 +26,7 @@ IMAGE_SIZE_MB=$(( $(sudo du --apparent-size -sm ${TARGET_ROOTFS_DIR} | cut -f1) 
 	$(sudo find ${TARGET_ROOTFS_DIR} | wc -l) * 4 / 1024 + 64 ))
 
 # Extra 10%
-IMAGE_SIZE_MB=$(( $IMAGE_SIZE_MB * 110 / 100 ))
+IMAGE_SIZE_MB=$(( $IMAGE_SIZE_MB * 102 / 100 ))
 
 sudo mkfs.ext4 -d ${TARGET_ROOTFS_DIR} ${ROOTFSIMAGE} ${IMAGE_SIZE_MB}M
 
